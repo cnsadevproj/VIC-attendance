@@ -6,7 +6,7 @@ import { SEAT_LAYOUTS } from '../../config/seatLayouts'
 interface SeatMapProps {
   zoneId: string
   attendanceRecords: Map<string, AttendanceRecord>
-  onSeatClick: (seatId: string, studentId: string) => void
+  onSeatClick: (seatId: string) => void
 }
 
 // Mock student data - will be replaced with Supabase data
@@ -31,7 +31,7 @@ export default function SeatMap({
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-4 overflow-x-auto">
-      <div className="min-w-max">
+      <div className="inline-block">
         {layout.map((row, rowIndex) => {
           // Handle line break
           if (row[0] === 'br') {
@@ -39,7 +39,7 @@ export default function SeatMap({
           }
 
           return (
-            <div key={rowIndex} className="flex mb-2">
+            <div key={rowIndex} className="seat-row">
               {row.map((cell, cellIndex) => {
                 // Handle spacer
                 if (cell === 'sp') {
@@ -48,13 +48,15 @@ export default function SeatMap({
 
                 // Handle empty seat
                 if (cell === 'empty') {
-                  return <div key={`empty-${cellIndex}`} className="seat seat-empty" />
+                  return <div key={`empty-${cellIndex}`} className="seat-empty" />
                 }
 
                 // Regular seat
                 const seatId = cell as string
                 const student = mockStudentMap[seatId]
-                const record = student ? attendanceRecords.get(student.studentId) : undefined
+                // Use seatId as key when no student data
+                const recordKey = student?.studentId || seatId
+                const record = attendanceRecords.get(recordKey)
 
                 return (
                   <Seat
@@ -64,11 +66,7 @@ export default function SeatMap({
                     studentId={student?.studentId}
                     status={record?.status || 'unchecked'}
                     hasNote={!!record?.note}
-                    onClick={() => {
-                      if (student) {
-                        onSeatClick(seatId, student.studentId)
-                      }
-                    }}
+                    onClick={() => onSeatClick(seatId)}
                   />
                 )
               })}

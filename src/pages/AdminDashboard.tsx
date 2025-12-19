@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '../components/layout/Header'
-import type { TimeSlot } from '../types'
 
 interface ZoneSummary {
   zoneId: string
@@ -24,6 +23,14 @@ interface StaffStatus {
   lastUpdated: string | null
 }
 
+interface AttendanceDetail {
+  seatId: string
+  studentName: string
+  status: 'present' | 'absent' | 'late' | 'other'
+  note?: string
+  checkedAt: string
+}
+
 // Mock data - will be replaced with Supabase data
 const mockZoneSummaries: ZoneSummary[] = [
   { zoneId: '4A', zoneName: '4층 A구역', grade: 1, present: 28, absent: 1, late: 1, other: 0, total: 30, checked: 30, completionRate: 100 },
@@ -35,10 +42,26 @@ const mockZoneSummaries: ZoneSummary[] = [
 ]
 
 const mockStaffStatus: StaffStatus[] = [
-  { staffId: '1', staffName: '김선생', zones: ['4A', '4B'], completionRate: 95, lastUpdated: '16:55' },
-  { staffId: '2', staffName: '이선생', zones: ['4C', '4D'], completionRate: 50, lastUpdated: '16:52' },
-  { staffId: '3', staffName: '박선생', zones: ['3A', '3B'], completionRate: 75, lastUpdated: '16:58' },
+  { staffId: '1', staffName: '김선생', zones: ['4A', '4B'], completionRate: 95, lastUpdated: '08:35' },
+  { staffId: '2', staffName: '이선생', zones: ['4C', '4D'], completionRate: 50, lastUpdated: '08:32' },
+  { staffId: '3', staffName: '박선생', zones: ['3A', '3B'], completionRate: 75, lastUpdated: '08:38' },
 ]
+
+// Mock attendance details
+const mockAttendanceDetails: Record<string, AttendanceDetail[]> = {
+  '4A': [
+    { seatId: '4A001', studentName: '김민준', status: 'present', checkedAt: '08:32' },
+    { seatId: '4A002', studentName: '이서연', status: 'present', checkedAt: '08:32' },
+    { seatId: '4A003', studentName: '박지호', status: 'absent', note: '병결', checkedAt: '08:33' },
+    { seatId: '4A004', studentName: '최수빈', status: 'late', checkedAt: '08:45' },
+    { seatId: '4A005', studentName: '정예준', status: 'present', checkedAt: '08:32' },
+  ],
+  '3A': [
+    { seatId: '3A001', studentName: '강하늘', status: 'present', checkedAt: '08:31' },
+    { seatId: '3A002', studentName: '윤서준', status: 'present', checkedAt: '08:31' },
+    { seatId: '3A003', studentName: '임지우', status: 'absent', note: '무단결석', checkedAt: '08:35' },
+  ],
+}
 
 function getCompletionColor(rate: number): string {
   if (rate >= 100) return 'bg-green-500'
@@ -54,16 +77,36 @@ function getCompletionTextColor(rate: number): string {
   return 'text-gray-500'
 }
 
+function getStatusBadge(status: string) {
+  const styles: Record<string, string> = {
+    present: 'bg-green-100 text-green-700',
+    absent: 'bg-red-100 text-red-700',
+    late: 'bg-amber-100 text-amber-700',
+    other: 'bg-blue-100 text-blue-700',
+  }
+  const labels: Record<string, string> = {
+    present: '출석',
+    absent: '결석',
+    late: '지각',
+    other: '기타',
+  }
+  return (
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
+      {labels[status]}
+    </span>
+  )
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate()
-  const [timeSlot, setTimeSlot] = useState<TimeSlot>('ET')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [zoneSummaries, _setZoneSummaries] = useState<ZoneSummary[]>(mockZoneSummaries)
   const [staffStatus, _setStaffStatus] = useState<StaffStatus[]>(mockStaffStatus)
-  // TODO: Use _setZoneSummaries and _setStaffStatus when fetching from Supabase
   void _setZoneSummaries
   void _setStaffStatus
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null)
+  const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  const [attendanceDetails, setAttendanceDetails] = useState<AttendanceDetail[]>([])
 
   // Filter by grade
   const filteredSummaries = selectedGrade
@@ -87,14 +130,24 @@ export default function AdminDashboard() {
     ? Math.round((overallStats.totalChecked / overallStats.totalStudents) * 100)
     : 0
 
+  // Load attendance details when zone is selected
+  const handleZoneClick = (zoneId: string) => {
+    setSelectedZone(zoneId)
+    setAttendanceDetails(mockAttendanceDetails[zoneId] || [])
+  }
+
+  const closeModal = () => {
+    setSelectedZone(null)
+    setAttendanceDetails([])
+  }
+
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      // TODO: Fetch real data from Supabase
       console.log('Refreshing data...')
     }, 30000)
     return () => clearInterval(interval)
-  }, [date, timeSlot])
+  }, [date])
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -104,7 +157,7 @@ export default function AdminDashboard() {
         onBack={() => navigate('/')}
       />
 
-      {/* Filters */}
+      {/* Date Filter */}
       <div className="bg-white border-b px-4 py-3 flex flex-wrap gap-3 items-center">
         <input
           type="date"
@@ -112,21 +165,7 @@ export default function AdminDashboard() {
           onChange={(e) => setDate(e.target.value)}
           className="px-3 py-2 border rounded-lg text-sm"
         />
-        <div className="flex gap-1">
-          {(['ET', 'EP1', 'EP2'] as TimeSlot[]).map((slot) => (
-            <button
-              key={slot}
-              onClick={() => setTimeSlot(slot)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                timeSlot === slot
-                  ? 'bg-slate-700 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {slot}
-            </button>
-          ))}
-        </div>
+        <span className="text-sm text-gray-500">08:30~08:40 출결</span>
         <div className="flex gap-1 ml-auto">
           <button
             onClick={() => setSelectedGrade(null)}
@@ -155,7 +194,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Overall Summary */}
-      <div className="px-4 py-4">
+      <div className="px-4 py-4 overflow-auto flex-1">
         <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">전체 현황</h2>
@@ -194,13 +233,13 @@ export default function AdminDashboard() {
         </div>
 
         {/* Zone Status Grid */}
-        <h2 className="text-lg font-bold text-gray-800 mb-3">구역별 현황</h2>
+        <h2 className="text-lg font-bold text-gray-800 mb-3">구역별 현황 (클릭하여 상세보기)</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
           {filteredSummaries.map((zone) => (
             <div
               key={zone.zoneId}
               className="bg-white rounded-xl shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => navigate(`/attendance/${zone.zoneId}`)}
+              onClick={() => handleZoneClick(zone.zoneId)}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="font-bold text-gray-800">{zone.zoneId}</span>
@@ -261,6 +300,72 @@ export default function AdminDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Attendance Detail Modal */}
+      {selectedZone && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-800">{selectedZone} 출결 상세</h3>
+              <button
+                onClick={closeModal}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-auto max-h-[60vh]">
+              {attendanceDetails.length > 0 ? (
+                <table className="w-full">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">좌석</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">이름</th>
+                      <th className="px-4 py-2 text-center text-sm font-medium text-gray-500">상태</th>
+                      <th className="px-4 py-2 text-right text-sm font-medium text-gray-500">시간</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {attendanceDetails.map((detail) => (
+                      <tr key={detail.seatId} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 font-medium text-gray-800">{detail.seatId}</td>
+                        <td className="px-4 py-2 text-gray-600">
+                          {detail.studentName}
+                          {detail.note && (
+                            <span className="ml-2 text-xs text-gray-400">({detail.note})</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-center">{getStatusBadge(detail.status)}</td>
+                        <td className="px-4 py-2 text-right text-gray-500 text-sm">{detail.checkedAt}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-8 text-center text-gray-500">
+                  아직 입력된 출결 데이터가 없습니다.
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t flex gap-2">
+              <button
+                onClick={() => navigate(`/attendance/${selectedZone}`)}
+                className="flex-1 py-2 bg-primary-500 text-white font-medium rounded-lg hover:bg-primary-600"
+              >
+                출결 입력 화면으로
+              </button>
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

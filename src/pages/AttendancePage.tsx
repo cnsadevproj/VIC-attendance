@@ -3,26 +3,32 @@ import { useState } from 'react'
 import Header from '../components/layout/Header'
 import SeatMap from '../components/seatmap/SeatMap'
 import AttendanceSummary from '../components/attendance/AttendanceSummary'
-import TimeSlotSelector from '../components/attendance/TimeSlotSelector'
-import type { TimeSlot, AttendanceRecord } from '../types'
+import type { AttendanceRecord } from '../types'
 
 export default function AttendancePage() {
-  const { zoneId } = useParams<{ grade: string; zoneId: string }>()
+  const { zoneId } = useParams<{ zoneId: string }>()
   const navigate = useNavigate()
-  const [timeSlot, setTimeSlot] = useState<TimeSlot>('ET')
   const [attendanceRecords, setAttendanceRecords] = useState<Map<string, AttendanceRecord>>(new Map())
   const [hasChanges, setHasChanges] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleSeatClick = (_seatId: string, studentId: string) => {
+  // Get today's date in Korean format
+  const today = new Date().toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  })
+
+  const handleSeatClick = (seatId: string) => {
     setAttendanceRecords((prev) => {
       const newRecords = new Map(prev)
-      const current = newRecords.get(studentId)
+      const current = newRecords.get(seatId)
 
       // Toggle between present and absent
       const newStatus = current?.status === 'present' ? 'absent' : 'present'
-      newRecords.set(studentId, {
-        studentId,
+      newRecords.set(seatId, {
+        studentId: seatId, // Using seatId as identifier for now
         status: newStatus,
         isModified: true,
       })
@@ -42,7 +48,7 @@ export default function AttendancePage() {
   }
 
   const handleMarkAllPresent = () => {
-    // TODO: Implement mark all present
+    // TODO: Mark all seats as present from SEAT_LAYOUTS
     alert('전체 출석 처리')
   }
 
@@ -69,9 +75,12 @@ export default function AttendancePage() {
         onBack={() => navigate('/')}
       />
 
-      {/* Time slot selector */}
+      {/* Date display */}
       <div className="bg-white border-b px-4 py-3">
-        <TimeSlotSelector value={timeSlot} onChange={setTimeSlot} />
+        <div className="text-center">
+          <span className="text-lg font-semibold text-gray-700">{today}</span>
+          <span className="ml-2 text-sm text-gray-500">출결 체크</span>
+        </div>
       </div>
 
       {/* Summary bar */}

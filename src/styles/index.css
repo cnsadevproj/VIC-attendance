@@ -28,10 +28,15 @@
     @apply btn bg-gray-200 text-gray-800 hover:bg-gray-300;
   }
 
+  /* Fixed-width seat grid for consistent alignment */
   .seat {
-    @apply min-w-[60px] h-[60px] flex flex-col justify-center items-center;
+    width: 60px;
+    height: 60px;
+    @apply flex flex-col justify-center items-center;
     @apply text-xs border-2 rounded-lg transition-all duration-200;
     @apply cursor-pointer select-none;
+    margin: 2px;
+    flex-shrink: 0;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
@@ -57,11 +62,23 @@
   }
 
   .seat-empty {
-    @apply invisible;
+    visibility: hidden;
+    width: 60px;
+    height: 60px;
+    margin: 2px;
+    flex-shrink: 0;
   }
 
   .seat-spacer {
-    @apply w-10;
+    width: 40px;
+    height: 60px;
+    margin: 2px;
+    flex-shrink: 0;
+  }
+
+  .seat-row {
+    @apply flex;
+    flex-wrap: nowrap;
   }
 }
 
