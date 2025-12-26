@@ -78,16 +78,16 @@ function doPost(e) {
     // B2: 날짜 입력
     sheet.getRange('B2').setValue(displayDate);
 
-    // 1학년 결석자 입력 (B4부터)
+    // 1학년 결석자 입력 (B8부터)
     if (grade1Students && grade1Students.length > 0) {
       const grade1Data = grade1Students.map(s => [s.seatId, s.name, s.note]);
-      sheet.getRange(4, 2, grade1Data.length, 3).setValues(grade1Data);
+      sheet.getRange(8, 2, grade1Data.length, 3).setValues(grade1Data);
     }
 
-    // 2학년 결석자 입력 (G4부터)
+    // 2학년 결석자 입력 (G8부터)
     if (grade2Students && grade2Students.length > 0) {
       const grade2Data = grade2Students.map(s => [s.seatId, s.name, s.note]);
-      sheet.getRange(4, 7, grade2Data.length, 3).setValues(grade2Data);
+      sheet.getRange(8, 7, grade2Data.length, 3).setValues(grade2Data);
     }
 
     // 결과 반환
@@ -142,10 +142,10 @@ function setupNewSheet(sheet) {
  * 데이터 영역만 클리어 (헤더 유지)
  */
 function clearDataArea(sheet) {
-  // 1학년 데이터 영역 (B4:D100)
-  sheet.getRange('B4:D100').clearContent();
-  // 2학년 데이터 영역 (G4:I100)
-  sheet.getRange('G4:I100').clearContent();
+  // 1학년 데이터 영역 (B8:D100)
+  sheet.getRange('B8:D100').clearContent();
+  // 2학년 데이터 영역 (G8:I100)
+  sheet.getRange('G8:I100').clearContent();
 }
 
 /**
