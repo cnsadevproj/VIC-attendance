@@ -313,18 +313,52 @@ function getAllSeatIds(zoneId: string): string[] {
   })
 }
 
-// 학생을 좌석에 배치 (미배치 좌석은 null)
+// 좌석 수 비율에 따라 학생 수 분배
+function distributeStudentsByRatio(
+  students: { studentId: string; name: string }[],
+  zones: string[]
+): Map<string, number> {
+  const zoneSeatCounts = zones.map(zone => ({
+    zone,
+    seatCount: getAllSeatIds(zone).length
+  }))
+  const totalSeats = zoneSeatCounts.reduce((sum, z) => sum + z.seatCount, 0)
+  const totalStudents = students.length
+
+  const distribution = new Map<string, number>()
+  let assignedTotal = 0
+
+  zoneSeatCounts.forEach(({ zone, seatCount }, index) => {
+    if (index === zoneSeatCounts.length - 1) {
+      // 마지막 구역은 나머지 학생 전부 배정
+      distribution.set(zone, totalStudents - assignedTotal)
+    } else {
+      // 비율에 따라 배정
+      const count = Math.round((seatCount / totalSeats) * totalStudents)
+      distribution.set(zone, count)
+      assignedTotal += count
+    }
+  })
+
+  return distribution
+}
+
+// 학생을 좌석에 배치 (미배치 좌석은 null) - 4개 교실에 분산
 function assignStudentsToSeats(): Map<string, Student | null> {
   const studentMap = new Map<string, Student | null>()
 
-  // 1학년 구역 (4층)
+  // 1학년 구역 (4층) - 비율에 따라 분산
   const grade1Zones = ['4A', '4B', '4C', '4D']
+  const grade1Distribution = distributeStudentsByRatio(GRADE1_STUDENTS, grade1Zones)
   let grade1StudentIndex = 0
 
   grade1Zones.forEach((zoneId) => {
     const seatIds = getAllSeatIds(zoneId)
+    const studentsForZone = grade1Distribution.get(zoneId) || 0
+    let zoneStudentCount = 0
+
     seatIds.forEach((seatId) => {
-      if (grade1StudentIndex < GRADE1_STUDENTS.length) {
+      if (zoneStudentCount < studentsForZone && grade1StudentIndex < GRADE1_STUDENTS.length) {
         const studentData = GRADE1_STUDENTS[grade1StudentIndex]
         studentMap.set(seatId, {
           studentId: studentData.studentId,
@@ -332,6 +366,7 @@ function assignStudentsToSeats(): Map<string, Student | null> {
           seatId,
         })
         grade1StudentIndex++
+        zoneStudentCount++
       } else {
         // 미배치 좌석
         studentMap.set(seatId, null)
@@ -339,14 +374,18 @@ function assignStudentsToSeats(): Map<string, Student | null> {
     })
   })
 
-  // 2학년 구역 (3층)
+  // 2학년 구역 (3층) - 비율에 따라 분산
   const grade2Zones = ['3A', '3B', '3C', '3D']
+  const grade2Distribution = distributeStudentsByRatio(GRADE2_STUDENTS, grade2Zones)
   let grade2StudentIndex = 0
 
   grade2Zones.forEach((zoneId) => {
     const seatIds = getAllSeatIds(zoneId)
+    const studentsForZone = grade2Distribution.get(zoneId) || 0
+    let zoneStudentCount = 0
+
     seatIds.forEach((seatId) => {
-      if (grade2StudentIndex < GRADE2_STUDENTS.length) {
+      if (zoneStudentCount < studentsForZone && grade2StudentIndex < GRADE2_STUDENTS.length) {
         const studentData = GRADE2_STUDENTS[grade2StudentIndex]
         studentMap.set(seatId, {
           studentId: studentData.studentId,
@@ -354,6 +393,7 @@ function assignStudentsToSeats(): Map<string, Student | null> {
           seatId,
         })
         grade2StudentIndex++
+        zoneStudentCount++
       } else {
         // 미배치 좌석
         studentMap.set(seatId, null)
