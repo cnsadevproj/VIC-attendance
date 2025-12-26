@@ -5,6 +5,7 @@ import { getStudentBySeatId, searchStudentByName, type StudentSearchResult } fro
 import BugReportModal, { type BugReport } from '../components/BugReportModal'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { fetchTodayStaff, isTemporaryPeriod, type TodayStaff } from '../config/staffSchedule'
+import { exportToClipboard, type AbsentStudent } from '../services/googleSheets'
 import type { AttendanceRecord } from '../types'
 
 interface ZoneSummary {
@@ -263,6 +264,8 @@ export default function AdminDashboard() {
   const [showBugReports, setShowBugReports] = useState(false)
   const [bugReports, setBugReports] = useState<BugReport[]>([])
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'present' | 'absent' | 'unchecked' | null>(null)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportMessage, setExportMessage] = useState<string | null>(null)
 
   const handleSearch = (query: string) => {
     setSearchQuery(query)
@@ -670,6 +673,65 @@ export default function AdminDashboard() {
   const grade1Zones = filteredSummaries.filter((z) => z.grade === 1)
   const grade2Zones = filteredSummaries.filter((z) => z.grade === 2)
 
+  // 결석자 목록 (내보내기용)
+  const absentStudentsForExport = useMemo(() => {
+    const result: AbsentStudent[] = []
+
+    // 모든 구역에서 결석자 수집
+    ZONES.forEach((zone) => {
+      const layout = SEAT_LAYOUTS[zone.id]
+      if (!layout) return
+
+      const records = selectedDateData.get(zone.id) || new Map()
+
+      layout.forEach((row) => {
+        if (row[0] === 'br') return
+        row.forEach((cell) => {
+          if (cell !== 'sp' && cell !== 'empty' && cell !== 'br') {
+            const seatId = cell as string
+            const student = getStudentBySeatId(seatId)
+            if (student) {
+              const record = records.get(seatId)
+              if (record?.status === 'absent') {
+                // 비고: 사전결석 사유 또는 기타 메모
+                let note = ''
+                if (student.preAbsence) {
+                  note = `[사전] ${student.preAbsence.reason}`
+                }
+                if (record.note) {
+                  note = note ? `${note} / ${record.note}` : record.note
+                }
+
+                result.push({
+                  seatId,
+                  name: student.name,
+                  note,
+                  grade: zone.grade,
+                })
+              }
+            }
+          }
+        })
+      })
+    })
+
+    // 좌석번호 순으로 정렬
+    result.sort((a, b) => a.seatId.localeCompare(b.seatId))
+
+    return result
+  }, [selectedDateData])
+
+  // 클립보드로 내보내기
+  const handleExportToClipboard = async () => {
+    const text = exportToClipboard(date, absentStudentsForExport)
+    try {
+      await navigator.clipboard.writeText(text)
+      setExportMessage('클립보드에 복사되었습니다!')
+    } catch {
+      setExportMessage('복사 실패. 수동으로 복사해주세요.')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header
@@ -732,6 +794,15 @@ export default function AdminDashboard() {
           className="px-3 py-2 border rounded-lg text-sm"
         />
         <span className="text-sm text-gray-500">08:30~08:50 출결</span>
+        <button
+          onClick={() => setShowExportModal(true)}
+          className="px-3 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 flex items-center gap-1"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          내보내기
+        </button>
         <div className="flex gap-1 ml-auto">
           <button
             onClick={() => setSelectedGrade(null)}
@@ -1205,6 +1276,110 @@ export default function AdminDashboard() {
               >
                 닫기
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 내보내기 모달 */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-emerald-500 text-white p-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold">결석자 내보내기</h2>
+              <button
+                onClick={() => {
+                  setShowExportModal(false)
+                  setExportMessage(null)
+                }}
+                className="text-white/80 hover:text-white text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="mb-4">
+                <div className="text-sm text-gray-500 mb-1">선택된 날짜</div>
+                <div className="font-bold text-lg">
+                  {new Date(date + 'T00:00:00').toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    weekday: 'short',
+                  })}
+                </div>
+              </div>
+
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-500 mb-2">결석자 현황</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-blue-600 font-semibold">1학년:</span>{' '}
+                    {absentStudentsForExport.filter(s => s.grade === 1).length}명
+                  </div>
+                  <div>
+                    <span className="text-green-600 font-semibold">2학년:</span>{' '}
+                    {absentStudentsForExport.filter(s => s.grade === 2).length}명
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-gray-400">
+                  총 {absentStudentsForExport.length}명
+                </div>
+              </div>
+
+              {/* 결석자 미리보기 */}
+              {absentStudentsForExport.length > 0 && (
+                <div className="mb-4 max-h-48 overflow-y-auto">
+                  <div className="text-sm text-gray-500 mb-2">결석자 목록</div>
+                  <div className="space-y-1">
+                    {absentStudentsForExport.map((student) => (
+                      <div
+                        key={student.seatId}
+                        className="flex items-center gap-2 text-sm p-2 bg-red-50 rounded"
+                      >
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                          student.grade === 1 ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                        }`}>
+                          {student.grade}학년
+                        </span>
+                        <span className="font-mono text-gray-600">{student.seatId}</span>
+                        <span className="font-medium">{student.name}</span>
+                        {student.note && (
+                          <span className="text-xs text-purple-600 truncate flex-1">{student.note}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {exportMessage && (
+                <div className={`mb-4 p-3 rounded-lg text-sm ${
+                  exportMessage.includes('실패') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+                }`}>
+                  {exportMessage}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <button
+                  onClick={handleExportToClipboard}
+                  className="w-full py-3 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 transition-colors"
+                >
+                  클립보드에 복사
+                </button>
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1gVFE9dxJ-tl6f4KFqe5z2XDZ2B5mVgzpFAj7s-XrLAs/edit"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full py-3 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition-colors text-center"
+                >
+                  Google 스프레드시트 열기
+                </a>
+                <p className="text-xs text-gray-400 text-center mt-2">
+                  클립보드에 복사 후 스프레드시트에 붙여넣기 하세요
+                </p>
+              </div>
             </div>
           </div>
         </div>
