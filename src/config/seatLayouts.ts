@@ -1,8 +1,8 @@
 import type { SeatLayout } from '../types'
 
-// 좌석 배치 (학생 수에 맞게 단순화)
-// 1학년 (4층): 4A(32), 4B(32), 4C(32), 4D(31) = 127명
-// 2학년 (3층): 3A(35), 3B(35), 3C(22), 3D(48) = 140명
+// 좌석 배치 (실제 학생 수에 맞춤)
+// 1학년 (4층): 4A(30), 4B(30), 4C(31), 4D(30) = 121명
+// 2학년 (3층): 3A(37), 3B(37), 3C(24), 3D(48) = 146명
 
 // 좌석 배열 생성 헬퍼 함수
 function generateSeats(prefix: string, count: number, seatsPerRow: number = 8): SeatLayout {
@@ -29,15 +29,15 @@ function generateSeats(prefix: string, count: number, seatsPerRow: number = 8): 
 }
 
 export const SEAT_LAYOUTS: Record<string, SeatLayout> = {
-  // ========== 1학년 (4층) ==========
-  '4A': generateSeats('4A', 32, 8),
-  '4B': generateSeats('4B', 32, 8),
-  '4C': generateSeats('4C', 32, 8),
-  '4D': generateSeats('4D', 31, 8),
+  // ========== 1학년 (4층) - 121명 ==========
+  '4A': generateSeats('4A', 30, 8),
+  '4B': generateSeats('4B', 30, 8),
+  '4C': generateSeats('4C', 31, 8),
+  '4D': generateSeats('4D', 30, 8),
 
-  // ========== 2학년 (3층) ==========
-  '3A': generateSeats('3A', 35, 8),
-  '3B': generateSeats('3B', 35, 8),
-  '3C': generateSeats('3C', 22, 6),
+  // ========== 2학년 (3층) - 146명 ==========
+  '3A': generateSeats('3A', 37, 8),
+  '3B': generateSeats('3B', 37, 8),
+  '3C': generateSeats('3C', 24, 6),
   '3D': generateSeats('3D', 48, 8),
 }

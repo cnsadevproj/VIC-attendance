@@ -1,6 +1,6 @@
 // 실제 학생 데이터 (267명)
-// 1학년: 127명 (4층 4A, 4B, 4C, 4D)
-// 2학년: 140명 (3층 3A, 3B, 3C, 3D)
+// 1학년: 121명 (4층 4A, 4B, 4C, 4D)
+// 2학년: 146명 (3층 3A, 3B, 3C, 3D)
 
 export interface Student {
   studentId: string  // 5자리 학번
@@ -288,18 +288,18 @@ const GRADE2_STUDENTS: { studentId: string; name: string }[] = [
   { studentId: '21224', name: '홍예빈' },
 ]
 
-// 구역별 좌석 배치
-// 1학년: 4A(32), 4B(32), 4C(32), 4D(31) = 127명
-// 2학년: 3A(35), 3B(35), 3C(22), 3D(48) = 140명
+// 구역별 좌석 배치 (실제 학생 수에 맞춤)
+// 1학년: 4A(30), 4B(30), 4C(31), 4D(30) = 121명
+// 2학년: 3A(37), 3B(37), 3C(24), 3D(48) = 146명
 const ZONE_DISTRIBUTION = {
-  '4A': { start: 0, count: 32, prefix: '4A' },
-  '4B': { start: 32, count: 32, prefix: '4B' },
-  '4C': { start: 64, count: 32, prefix: '4C' },
-  '4D': { start: 96, count: 31, prefix: '4D' },
-  '3A': { start: 0, count: 35, prefix: '3A' },
-  '3B': { start: 35, count: 35, prefix: '3B' },
-  '3C': { start: 70, count: 22, prefix: '3C' },
-  '3D': { start: 92, count: 48, prefix: '3D' },
+  '4A': { start: 0, count: 30, prefix: '4A' },
+  '4B': { start: 30, count: 30, prefix: '4B' },
+  '4C': { start: 60, count: 31, prefix: '4C' },
+  '4D': { start: 91, count: 30, prefix: '4D' },
+  '3A': { start: 0, count: 37, prefix: '3A' },
+  '3B': { start: 37, count: 37, prefix: '3B' },
+  '3C': { start: 74, count: 24, prefix: '3C' },
+  '3D': { start: 98, count: 48, prefix: '3D' },
 }
 
 // 학생을 좌석에 배치
