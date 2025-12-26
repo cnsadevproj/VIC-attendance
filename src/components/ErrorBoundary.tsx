@@ -23,36 +23,6 @@ function generateErrorCode(): string {
   return `ERR-${dateStr}-${randomStr}`
 }
 
-// 이메일 본문 생성
-function generateEmailBody(errorCode: string, error: Error | null, errorInfo: ErrorInfo | null): string {
-  const now = new Date()
-  const timestamp = now.toLocaleString('ko-KR')
-  const userAgent = navigator.userAgent
-  const url = window.location.href
-
-  return `
-[VIC 출결 시스템 오류 보고]
-
-오류 코드: ${errorCode}
-발생 시각: ${timestamp}
-페이지 URL: ${url}
-
-오류 메시지:
-${error?.message || '알 수 없는 오류'}
-
-오류 스택:
-${error?.stack || '없음'}
-
-컴포넌트 스택:
-${errorInfo?.componentStack || '없음'}
-
-브라우저 정보:
-${userAgent}
-
----
-이 이메일은 VIC 출결 시스템에서 자동 생성되었습니다.
-`.trim()
-}
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
@@ -84,31 +54,44 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     })
   }
 
-  handleCopyError = () => {
-    const { errorCode, error, errorInfo } = this.state
-    const errorText = generateEmailBody(errorCode, error, errorInfo)
-
-    navigator.clipboard.writeText(errorText).then(() => {
-      alert('오류 정보가 클립보드에 복사되었습니다.')
-    }).catch(() => {
-      alert('복사에 실패했습니다. 스크린샷을 찍어주세요.')
-    })
-  }
-
-  handleSendEmail = () => {
-    const { errorCode, error, errorInfo } = this.state
-    const subject = encodeURIComponent(`[VIC 출결 오류] ${errorCode}`)
-    const body = encodeURIComponent(generateEmailBody(errorCode, error, errorInfo))
-
-    window.location.href = `mailto:soojeongmin@cnsa.hs.kr?subject=${subject}&body=${body}`
-  }
-
   handleReload = () => {
     window.location.reload()
   }
 
   handleGoHome = () => {
     window.location.href = '/'
+  }
+
+  handleReportBug = () => {
+    const { errorCode, error, errorInfo } = this.state
+
+    // BugReportModal과 동일한 형식으로 저장
+    const bugReport = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+      description: `[자동 오류 보고] ${errorCode}`,
+      errorInfo: `${error?.message || '알 수 없는 오류'}\n\n${error?.stack || ''}\n\n${errorInfo?.componentStack || ''}`,
+      userAgent: navigator.userAgent,
+      isRead: false,
+    }
+
+    // 기존 보고 불러오기
+    const existingReports = localStorage.getItem('bug_reports')
+    let reports = []
+    if (existingReports) {
+      try {
+        reports = JSON.parse(existingReports)
+      } catch {
+        reports = []
+      }
+    }
+
+    // 새 보고 추가
+    reports.unshift(bugReport)
+    localStorage.setItem('bug_reports', JSON.stringify(reports))
+
+    alert('오류가 보고되었습니다. 관리자가 확인할 예정입니다.')
   }
 
   render() {
@@ -147,36 +130,19 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               </div>
 
               <p className="text-sm text-gray-500 mb-4">
-                이 오류가 지속되면 아래 방법으로 관리자에게 알려주세요.
+                새로고침을 시도해보세요. 오류가 지속되면 관리자에게 문의하세요.
               </p>
 
               {/* 액션 버튼들 */}
               <div className="space-y-2">
                 <button
-                  onClick={this.handleSendEmail}
-                  className="w-full py-3 bg-blue-500 text-white font-semibold rounded-xl
-                           hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+                  onClick={this.handleReportBug}
+                  className="w-full py-3 bg-orange-500 text-white font-semibold rounded-xl
+                           hover:bg-orange-600 transition-colors"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  이메일로 오류 보고
+                  오류 보고하기
                 </button>
-
-                <button
-                  onClick={this.handleCopyError}
-                  className="w-full py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl
-                           hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  오류 정보 복사
-                </button>
-
-                <div className="flex gap-2 pt-2">
+                <div className="flex gap-2">
                   <button
                     onClick={this.handleReload}
                     className="flex-1 py-3 bg-primary-500 text-white font-semibold rounded-xl
@@ -193,13 +159,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                   </button>
                 </div>
               </div>
-            </div>
-
-            {/* 푸터 */}
-            <div className="bg-gray-50 px-5 py-3 text-center">
-              <p className="text-xs text-gray-400">
-                스크린샷을 찍어 soojeongmin@cnsa.hs.kr로 보내주셔도 됩니다.
-              </p>
             </div>
           </div>
         </div>
