@@ -5,7 +5,7 @@ import { getStudentBySeatId, searchStudentByName, type StudentSearchResult } fro
 import BugReportModal, { type BugReport } from '../components/BugReportModal'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { fetchTodayStaff, isTemporaryPeriod, type TodayStaff } from '../config/staffSchedule'
-import { exportToClipboard, type AbsentStudent } from '../services/googleSheets'
+import { exportToClipboard, exportToGoogleSheets, isAppsScriptConfigured, getSheetName, type AbsentStudent } from '../services/googleSheets'
 import type { AttendanceRecord } from '../types'
 
 interface ZoneSummary {
@@ -266,6 +266,7 @@ export default function AdminDashboard() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'present' | 'absent' | 'unchecked' | null>(null)
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handleSearch = (query: string) => {
     setSearchQuery(query)
@@ -729,6 +730,28 @@ export default function AdminDashboard() {
       setExportMessage('클립보드에 복사되었습니다!')
     } catch {
       setExportMessage('복사 실패. 수동으로 복사해주세요.')
+    }
+  }
+
+  // Google Sheets에 직접 내보내기
+  const handleExportToSheets = async () => {
+    setIsExporting(true)
+    setExportMessage(null)
+
+    try {
+      const result = await exportToGoogleSheets(date, absentStudentsForExport)
+      setExportMessage(result.message)
+
+      if (result.success && result.sheetUrl) {
+        // 성공 시 시트 열기
+        setTimeout(() => {
+          window.open(result.sheetUrl, '_blank')
+        }, 500)
+      }
+    } catch (error) {
+      setExportMessage('내보내기 중 오류가 발생했습니다.')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -1362,9 +1385,53 @@ export default function AdminDashboard() {
               )}
 
               <div className="space-y-2">
+                {/* Apps Script 연동 버튼 (설정된 경우) */}
+                {isAppsScriptConfigured() ? (
+                  <button
+                    onClick={handleExportToSheets}
+                    disabled={isExporting || absentStudentsForExport.length === 0}
+                    className={`w-full py-3 font-semibold rounded-xl transition-colors flex items-center justify-center gap-2
+                      ${isExporting || absentStudentsForExport.length === 0
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                      }`}
+                  >
+                    {isExporting ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        내보내는 중...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        시트에 바로 저장 ({getSheetName(date)})
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+                    <div className="font-semibold mb-1">⚠️ Apps Script 미설정</div>
+                    <div className="text-xs">시트 자동 저장을 사용하려면 Apps Script를 설정하세요.</div>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-white text-gray-400">또는</span>
+                  </div>
+                </div>
+
                 <button
                   onClick={handleExportToClipboard}
-                  className="w-full py-3 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 transition-colors"
+                  className="w-full py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors"
                 >
                   클립보드에 복사
                 </button>
@@ -1372,13 +1439,10 @@ export default function AdminDashboard() {
                   href="https://docs.google.com/spreadsheets/d/1gVFE9dxJ-tl6f4KFqe5z2XDZ2B5mVgzpFAj7s-XrLAs/edit"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full py-3 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition-colors text-center"
+                  className="block w-full py-2 text-blue-600 font-medium rounded-xl hover:bg-blue-50 transition-colors text-center text-sm"
                 >
-                  Google 스프레드시트 열기
+                  Google 스프레드시트 열기 →
                 </a>
-                <p className="text-xs text-gray-400 text-center mt-2">
-                  클립보드에 복사 후 스프레드시트에 붙여넣기 하세요
-                </p>
               </div>
             </div>
           </div>
