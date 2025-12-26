@@ -266,22 +266,22 @@ SELECT
     p.id AS staff_id,
     p.name AS staff_name,
     p.assigned_zones,
-    a.date,
-    a.time_slot,
+    dt.date,
+    dt.time_slot,
     COUNT(DISTINCT s.id) AS total_students,
-    COUNT(DISTINCT a.student_id) AS checked_students,
+    COUNT(DISTINCT att.student_id) AS checked_students,
     CASE
         WHEN COUNT(DISTINCT s.id) = 0 THEN 100
-        ELSE ROUND((COUNT(DISTINCT a.student_id)::NUMERIC / COUNT(DISTINCT s.id)) * 100, 1)
+        ELSE ROUND((COUNT(DISTINCT att.student_id)::NUMERIC / COUNT(DISTINCT s.id)) * 100, 1)
     END AS completion_percentage
 FROM public.profiles p
-CROSS JOIN (SELECT DISTINCT date, time_slot FROM public.attendance) a
+CROSS JOIN (SELECT DISTINCT date, time_slot FROM public.attendance) dt
 LEFT JOIN public.students s ON s.zone_id = ANY(p.assigned_zones) AND s.is_active = TRUE
 LEFT JOIN public.attendance att ON att.student_id = s.id
-    AND att.date = a.date
-    AND att.time_slot = a.time_slot
+    AND att.date = dt.date
+    AND att.time_slot = dt.time_slot
 WHERE p.role = 'staff'
-GROUP BY p.id, p.name, p.assigned_zones, a.date, a.time_slot;
+GROUP BY p.id, p.name, p.assigned_zones, dt.date, dt.time_slot;
 
 -- ============================================
 -- Seed Data for Zones
