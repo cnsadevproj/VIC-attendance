@@ -47,58 +47,63 @@ const GRADES = [
 
 // 구역별 출결 상태 계산
 function getZoneStatus(zoneId: string, todayKey: string): ZoneStatus {
-  const layout = SEAT_LAYOUTS[zoneId]
-  if (!layout) return { total: 0, present: 0, absent: 0, unchecked: 0, isComplete: false }
+  try {
+    const layout = SEAT_LAYOUTS[zoneId]
+    if (!layout) return { total: 0, present: 0, absent: 0, unchecked: 0, isComplete: false }
 
-  // 배정된 학생 수 계산
-  let totalStudents = 0
-  layout.forEach((row) => {
-    if (row[0] === 'br') return
-    row.forEach((cell) => {
-      if (cell !== 'sp' && cell !== 'empty' && cell !== 'br') {
-        const student = getStudentBySeatId(cell as string)
-        if (student) totalStudents++
-      }
+    // 배정된 학생 수 계산
+    let totalStudents = 0
+    layout.forEach((row) => {
+      if (row[0] === 'br') return
+      row.forEach((cell) => {
+        if (cell !== 'sp' && cell !== 'empty' && cell !== 'br') {
+          const student = getStudentBySeatId(cell as string)
+          if (student) totalStudents++
+        }
+      })
     })
-  })
 
-  // localStorage에서 출결 데이터 읽기 (저장된 데이터 또는 임시저장)
-  let records = new Map<string, AttendanceRecord>()
+    // localStorage에서 출결 데이터 읽기 (저장된 데이터 또는 임시저장)
+    let records = new Map<string, AttendanceRecord>()
 
-  const savedData = localStorage.getItem(`attendance_saved_${zoneId}_${todayKey}`)
-  if (savedData) {
     try {
-      const parsed = JSON.parse(savedData) as [string, AttendanceRecord][]
-      records = new Map(parsed)
-    } catch {
-      // ignore
-    }
-  } else {
-    const tempData = localStorage.getItem(`attendance_temp_${zoneId}_${todayKey}`)
-    if (tempData) {
-      try {
-        const parsed = JSON.parse(tempData) as [string, AttendanceRecord][]
-        records = new Map(parsed)
-      } catch {
-        // ignore
+      const savedData = localStorage.getItem(`attendance_saved_${zoneId}_${todayKey}`)
+      if (savedData) {
+        const parsed = JSON.parse(savedData) as [string, AttendanceRecord][]
+        if (Array.isArray(parsed)) {
+          records = new Map(parsed)
+        }
+      } else {
+        const tempData = localStorage.getItem(`attendance_temp_${zoneId}_${todayKey}`)
+        if (tempData) {
+          const parsed = JSON.parse(tempData) as [string, AttendanceRecord][]
+          if (Array.isArray(parsed)) {
+            records = new Map(parsed)
+          }
+        }
       }
+    } catch {
+      // 파싱 실패 시 빈 Map 사용
+      records = new Map()
     }
+
+    let present = 0
+    let absent = 0
+    // 실제 배정된 학생에 대해서만 출결 카운트
+    records.forEach((record, seatId) => {
+      const student = getStudentBySeatId(seatId)
+      if (!student) return // 학생이 없는 좌석은 무시
+      if (record.status === 'present') present++
+      else if (record.status === 'absent') absent++
+    })
+
+    const unchecked = Math.max(0, totalStudents - present - absent) // 음수 방지
+    const isComplete = unchecked === 0 && totalStudents > 0
+
+    return { total: totalStudents, present, absent, unchecked, isComplete }
+  } catch {
+    return { total: 0, present: 0, absent: 0, unchecked: 0, isComplete: false }
   }
-
-  let present = 0
-  let absent = 0
-  // 실제 배정된 학생에 대해서만 출결 카운트
-  records.forEach((record, seatId) => {
-    const student = getStudentBySeatId(seatId)
-    if (!student) return // 학생이 없는 좌석은 무시
-    if (record.status === 'present') present++
-    else if (record.status === 'absent') absent++
-  })
-
-  const unchecked = totalStudents - present - absent
-  const isComplete = unchecked === 0 && totalStudents > 0
-
-  return { total: totalStudents, present, absent, unchecked, isComplete }
 }
 
 export default function HomePage() {

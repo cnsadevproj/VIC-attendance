@@ -277,84 +277,116 @@ export default function AdminDashboard() {
 
   // 선택된 날짜의 출결 데이터 (localStorage 우선, 없으면 샘플 데이터 사용)
   const selectedDateData = useMemo(() => {
-    const todayKey = new Date().toISOString().split('T')[0]
-    const result = new Map<string, Map<string, AttendanceRecord>>()
+    try {
+      const todayKey = new Date().toISOString().split('T')[0]
+      const result = new Map<string, Map<string, AttendanceRecord>>()
 
-    ZONES.forEach((zone) => {
-      // 오늘 날짜인 경우 localStorage에서 실제 데이터 읽기
-      if (date === todayKey) {
-        // 먼저 저장된 데이터 확인
-        const savedData = localStorage.getItem(`attendance_saved_${zone.id}_${date}`)
-        if (savedData) {
-          try {
-            const parsed = JSON.parse(savedData) as [string, AttendanceRecord][]
-            result.set(zone.id, new Map(parsed))
-            return
-          } catch {
-            // ignore
+      ZONES.forEach((zone) => {
+        try {
+          // 오늘 날짜인 경우 localStorage에서 실제 데이터 읽기
+          if (date === todayKey) {
+            // 먼저 저장된 데이터 확인
+            const savedData = localStorage.getItem(`attendance_saved_${zone.id}_${date}`)
+            if (savedData) {
+              try {
+                const parsed = JSON.parse(savedData) as [string, AttendanceRecord][]
+                if (Array.isArray(parsed)) {
+                  result.set(zone.id, new Map(parsed))
+                  return
+                }
+              } catch {
+                // 파싱 실패 시 해당 데이터 삭제
+                localStorage.removeItem(`attendance_saved_${zone.id}_${date}`)
+              }
+            }
+
+            // 임시저장 데이터 확인
+            const tempData = localStorage.getItem(`attendance_temp_${zone.id}_${date}`)
+            if (tempData) {
+              try {
+                const parsed = JSON.parse(tempData) as [string, AttendanceRecord][]
+                if (Array.isArray(parsed)) {
+                  result.set(zone.id, new Map(parsed))
+                  return
+                }
+              } catch {
+                // 파싱 실패 시 해당 데이터 삭제
+                localStorage.removeItem(`attendance_temp_${zone.id}_${date}`)
+              }
+            }
           }
-        }
 
-        // 임시저장 데이터 확인
-        const tempData = localStorage.getItem(`attendance_temp_${zone.id}_${date}`)
-        if (tempData) {
-          try {
-            const parsed = JSON.parse(tempData) as [string, AttendanceRecord][]
-            result.set(zone.id, new Map(parsed))
-            return
-          } catch {
-            // ignore
+          // localStorage에 데이터가 없으면 샘플 데이터 사용
+          const sampleData = ALL_SAMPLE_DATA[date]
+          if (sampleData && sampleData.get) {
+            result.set(zone.id, sampleData.get(zone.id) || new Map())
+          } else {
+            result.set(zone.id, new Map())
           }
+        } catch {
+          // 개별 zone 처리 실패 시 빈 Map 설정
+          result.set(zone.id, new Map())
         }
-      }
+      })
 
-      // localStorage에 데이터가 없으면 샘플 데이터 사용
-      const sampleData = ALL_SAMPLE_DATA[date]
-      if (sampleData) {
-        result.set(zone.id, sampleData.get(zone.id) || new Map())
-      } else {
-        result.set(zone.id, new Map())
-      }
-    })
-
-    return result
+      return result
+    } catch (e) {
+      console.error('selectedDateData 계산 오류:', e)
+      return new Map<string, Map<string, AttendanceRecord>>()
+    }
   }, [date])
 
   // 실제 임시저장 구역 판별 (오늘 날짜인 경우 localStorage 확인)
   const selectedDateTempZones = useMemo(() => {
-    const todayKey = new Date().toISOString().split('T')[0]
+    try {
+      const todayKey = new Date().toISOString().split('T')[0]
 
-    if (date === todayKey) {
-      const tempZones: string[] = []
-      ZONES.forEach((zone) => {
-        const hasSaved = localStorage.getItem(`attendance_saved_${zone.id}_${date}`)
-        const hasTemp = localStorage.getItem(`attendance_temp_${zone.id}_${date}`)
-        if (!hasSaved && hasTemp) {
-          tempZones.push(zone.id)
-        }
-      })
-      return tempZones
+      if (date === todayKey) {
+        const tempZones: string[] = []
+        ZONES.forEach((zone) => {
+          try {
+            const hasSaved = localStorage.getItem(`attendance_saved_${zone.id}_${date}`)
+            const hasTemp = localStorage.getItem(`attendance_temp_${zone.id}_${date}`)
+            if (!hasSaved && hasTemp) {
+              tempZones.push(zone.id)
+            }
+          } catch {
+            // ignore
+          }
+        })
+        return tempZones
+      }
+
+      return getTempSaveZonesForDate(date)
+    } catch {
+      return []
     }
-
-    return getTempSaveZonesForDate(date)
   }, [date])
 
   // 기록자 정보 (오늘 날짜인 경우 localStorage에서 실제 기록자 읽기)
   const selectedDateRecorders = useMemo(() => {
-    const todayKey = new Date().toISOString().split('T')[0]
-    const recorders = getZoneRecordersForDate(date)
+    try {
+      const todayKey = new Date().toISOString().split('T')[0]
+      const recorders = getZoneRecordersForDate(date) || {}
 
-    // 오늘 날짜인 경우 localStorage에서 실제 기록자 덮어쓰기
-    if (date === todayKey) {
-      ZONES.forEach((zone) => {
-        const savedRecorder = localStorage.getItem(`attendance_recorder_${zone.id}_${date}`)
-        if (savedRecorder) {
-          recorders[zone.id] = savedRecorder
-        }
-      })
+      // 오늘 날짜인 경우 localStorage에서 실제 기록자 덮어쓰기
+      if (date === todayKey) {
+        ZONES.forEach((zone) => {
+          try {
+            const savedRecorder = localStorage.getItem(`attendance_recorder_${zone.id}_${date}`)
+            if (savedRecorder) {
+              recorders[zone.id] = savedRecorder
+            }
+          } catch {
+            // ignore
+          }
+        })
+      }
+
+      return recorders
+    } catch {
+      return {}
     }
-
-    return recorders
   }, [date])
 
   // 검색 결과에 출결 상태 추가
@@ -469,53 +501,61 @@ export default function AdminDashboard() {
 
   // 구역별 요약 계산
   const zoneSummaries = useMemo(() => {
-    return ZONES.map((zone) => {
-      const layout = SEAT_LAYOUTS[zone.id]
-      if (!layout) return null
+    try {
+      return ZONES.map((zone) => {
+        try {
+          const layout = SEAT_LAYOUTS[zone.id]
+          if (!layout) return null
 
-      // 배정된 학생 수 계산
-      let totalStudents = 0
-      layout.forEach((row) => {
-        if (row[0] === 'br') return
-        row.forEach((cell) => {
-          if (cell !== 'sp' && cell !== 'empty' && cell !== 'br') {
-            const student = getStudentBySeatId(cell as string)
-            if (student) totalStudents++
-          }
-        })
-      })
+          // 배정된 학생 수 계산
+          let totalStudents = 0
+          layout.forEach((row) => {
+            if (row[0] === 'br') return
+            row.forEach((cell) => {
+              if (cell !== 'sp' && cell !== 'empty' && cell !== 'br') {
+                const student = getStudentBySeatId(cell as string)
+                if (student) totalStudents++
+              }
+            })
+          })
 
-      // 출결 기록 (선택된 날짜 데이터 사용)
-      const records = selectedDateData.get(zone.id) || new Map()
-      let present = 0
-      let absent = 0
+          // 출결 기록 (선택된 날짜 데이터 사용)
+          const records = selectedDateData.get(zone.id) || new Map()
+          let present = 0
+          let absent = 0
 
-      // 실제 배정된 학생에 대해서만 출결 카운트
-      records.forEach((record, seatId) => {
-        const student = getStudentBySeatId(seatId)
-        if (!student) return // 학생이 없는 좌석은 무시
-        if (record.status === 'present') present++
-        else if (record.status === 'absent') absent++
-      })
+          // 실제 배정된 학생에 대해서만 출결 카운트
+          records.forEach((record, seatId) => {
+            const student = getStudentBySeatId(seatId)
+            if (!student) return // 학생이 없는 좌석은 무시
+            if (record.status === 'present') present++
+            else if (record.status === 'absent') absent++
+          })
 
-      const unchecked = totalStudents - present - absent
-      const completionRate = totalStudents > 0
-        ? Math.round(((present + absent) / totalStudents) * 100)
-        : 0
+          const unchecked = totalStudents - present - absent
+          const completionRate = totalStudents > 0
+            ? Math.round(((present + absent) / totalStudents) * 100)
+            : 0
 
-      return {
-        zoneId: zone.id,
-        zoneName: zone.name,
-        grade: zone.grade,
-        present,
-        absent,
-        unchecked,
-        total: totalStudents,
-        completionRate,
-        hasTempSave: selectedDateTempZones.includes(zone.id),
-        recordedBy: selectedDateRecorders[zone.id] || undefined,
-      } as ZoneSummary
-    }).filter(Boolean) as ZoneSummary[]
+          return {
+            zoneId: zone.id,
+            zoneName: zone.name,
+            grade: zone.grade,
+            present,
+            absent,
+            unchecked: Math.max(0, unchecked), // 음수 방지
+            total: totalStudents,
+            completionRate,
+            hasTempSave: selectedDateTempZones.includes(zone.id),
+            recordedBy: selectedDateRecorders[zone.id] || undefined,
+          } as ZoneSummary
+        } catch {
+          return null
+        }
+      }).filter(Boolean) as ZoneSummary[]
+    } catch {
+      return []
+    }
   }, [date, selectedDateData, selectedDateTempZones, selectedDateRecorders])
 
   // 학년 필터링
