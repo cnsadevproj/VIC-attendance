@@ -46,6 +46,135 @@ const SMS_TITLE = '방과후학교 면학 출결 안내';
 
 const TEST_MESSAGE = '이 메시지는 신규 프로그램 테스트를 위해 자동으로 보내진 메시지입니다.';
 
+// Robust login function
+async function loginToRiroschool(page) {
+  console.log('Logging into Riroschool...');
+  await page.goto('https://cnsa.riroschool.kr', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForTimeout(3000);
+
+  // Log current URL
+  console.log('Current URL:', page.url());
+
+  // Try multiple selectors for ID input
+  const idSelectors = [
+    'input[name="id"]',
+    'input[name="userId"]',
+    'input[name="username"]',
+    'input[name="user_id"]',
+    'input#id',
+    'input#userId',
+    'input#user_id',
+    'input[type="text"]:first-of-type',
+    'input[placeholder*="아이디"]',
+    'input[placeholder*="ID"]'
+  ];
+
+  let idInput = null;
+  for (const sel of idSelectors) {
+    try {
+      idInput = await page.waitForSelector(sel, { timeout: 3000, state: 'visible' });
+      if (idInput) {
+        console.log(`Found ID input with selector: ${sel}`);
+        break;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+
+  if (!idInput) {
+    // Take screenshot for debugging
+    const timestamp = Date.now();
+    console.log('Could not find ID input. Page title:', await page.title());
+
+    // Try to find any input field
+    const allInputs = await page.$$('input');
+    console.log(`Found ${allInputs.length} input fields on page`);
+
+    for (let i = 0; i < allInputs.length; i++) {
+      const inp = allInputs[i];
+      const type = await inp.getAttribute('type');
+      const name = await inp.getAttribute('name');
+      const id = await inp.getAttribute('id');
+      const placeholder = await inp.getAttribute('placeholder');
+      console.log(`Input ${i}: type=${type}, name=${name}, id=${id}, placeholder=${placeholder}`);
+    }
+
+    throw new Error('ID 입력 필드를 찾을 수 없습니다. 로그인 페이지 구조가 변경되었을 수 있습니다.');
+  }
+
+  await idInput.fill(CNSA_ID);
+  console.log('ID entered');
+
+  // Try multiple selectors for password input
+  const pwSelectors = [
+    'input[name="pw"]',
+    'input[name="password"]',
+    'input[name="userPw"]',
+    'input[name="user_pw"]',
+    'input#pw',
+    'input#password',
+    'input[type="password"]'
+  ];
+
+  let pwInput = null;
+  for (const sel of pwSelectors) {
+    try {
+      pwInput = await page.waitForSelector(sel, { timeout: 3000, state: 'visible' });
+      if (pwInput) {
+        console.log(`Found PW input with selector: ${sel}`);
+        break;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+
+  if (!pwInput) {
+    throw new Error('비밀번호 입력 필드를 찾을 수 없습니다');
+  }
+
+  await pwInput.fill(CNSA_PW);
+  console.log('Password entered');
+
+  // Click login button
+  const loginSelectors = [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    '.login-btn',
+    '.btn-login',
+    'button:has-text("로그인")',
+    'input[value="로그인"]',
+    'button:has-text("Login")',
+    '#login-btn',
+    '.login_btn'
+  ];
+
+  let clicked = false;
+  for (const sel of loginSelectors) {
+    try {
+      const btn = await page.$(sel);
+      if (btn) {
+        await btn.click();
+        console.log(`Clicked login with selector: ${sel}`);
+        clicked = true;
+        break;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+
+  if (!clicked) {
+    // Try pressing Enter as fallback
+    await page.keyboard.press('Enter');
+    console.log('Pressed Enter as login fallback');
+  }
+
+  await page.waitForTimeout(5000);
+  console.log('Login completed, current URL:', page.url());
+}
+
 // Test SMS sending to 민수정 선생님
 async function sendTestSMS() {
   const browser = await chromium.launch({
@@ -63,21 +192,12 @@ async function sendTestSMS() {
       await dialog.accept();
     });
 
-    // Login to Riroschool
-    console.log('Logging into Riroschool...');
-    await page.goto('https://cnsa.riroschool.kr');
-    await page.waitForLoadState('networkidle');
-
-    await page.fill('input[name="id"]', CNSA_ID);
-    await page.fill('input[name="pw"]', CNSA_PW);
-    await page.click('button[type="submit"], input[type="submit"], .login-btn');
-    await page.waitForTimeout(3000);
-    console.log('Login successful');
+    // Login
+    await loginToRiroschool(page);
 
     // Navigate to SMS page
-    await page.goto('https://cnsa.riroschool.kr/sms.php?action=send');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
+    await page.goto('https://cnsa.riroschool.kr/sms.php?action=send', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(3000);
     console.log('Navigated to SMS page');
 
     // Click 선생님 directory
@@ -246,21 +366,12 @@ async function sendAbsentSMS(absentStudents) {
       await dialog.accept();
     });
 
-    // Login to Riroschool
-    console.log('Logging into Riroschool...');
-    await page.goto('https://cnsa.riroschool.kr');
-    await page.waitForLoadState('networkidle');
-
-    await page.fill('input[name="id"]', CNSA_ID);
-    await page.fill('input[name="pw"]', CNSA_PW);
-    await page.click('button[type="submit"], input[type="submit"], .login-btn');
-    await page.waitForTimeout(3000);
-    console.log('Login successful');
+    // Login
+    await loginToRiroschool(page);
 
     // Navigate to SMS page
-    await page.goto('https://cnsa.riroschool.kr/sms.php?action=send');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
+    await page.goto('https://cnsa.riroschool.kr/sms.php?action=send', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(3000);
     console.log('Navigated to SMS page');
 
     for (const student of absentStudents) {
