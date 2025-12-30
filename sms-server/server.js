@@ -49,85 +49,97 @@ const TEST_MESSAGE = '이 메시지는 신규 프로그램 테스트를 위해 �
 // Robust login function
 async function loginToRiroschool(page) {
   console.log('Logging into Riroschool...');
-  await page.goto('https://cnsa.riroschool.kr', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+  // Go directly to login page
+  await page.goto('https://cnsa.riroschool.kr/user.php?action=signin', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForTimeout(3000);
 
   // Log current URL
   console.log('Current URL:', page.url());
 
-  // Try multiple selectors for ID input
-  const idSelectors = [
-    'input[name="id"]',
-    'input[name="userId"]',
-    'input[name="username"]',
-    'input[name="user_id"]',
-    'input#id',
-    'input#userId',
-    'input#user_id',
-    'input[type="text"]:first-of-type',
-    'input[placeholder*="아이디"]',
-    'input[placeholder*="ID"]'
-  ];
-
+  // The login form uses textbox role, not input[name]
+  // Try to find ID input by various methods
   let idInput = null;
-  for (const sel of idSelectors) {
+
+  // Method 1: Find by placeholder text
+  try {
+    idInput = await page.getByPlaceholder('학교 아이디').or(page.getByPlaceholder('아이디')).or(page.getByPlaceholder('이메일')).first();
+    if (await idInput.count() > 0) {
+      console.log('Found ID input by placeholder');
+    } else {
+      idInput = null;
+    }
+  } catch (e) {
+    console.log('Placeholder search failed:', e.message);
+  }
+
+  // Method 2: Find first textbox that's not password
+  if (!idInput) {
     try {
-      idInput = await page.waitForSelector(sel, { timeout: 3000, state: 'visible' });
-      if (idInput) {
-        console.log(`Found ID input with selector: ${sel}`);
-        break;
+      const textboxes = await page.locator('input[type="text"], input:not([type])').all();
+      for (const tb of textboxes) {
+        const type = await tb.getAttribute('type');
+        if (type !== 'password' && type !== 'hidden') {
+          idInput = tb;
+          console.log('Found ID input as first textbox');
+          break;
+        }
       }
     } catch (e) {
-      continue;
+      console.log('Textbox search failed:', e.message);
+    }
+  }
+
+  // Method 3: CSS selectors
+  if (!idInput) {
+    const idSelectors = [
+      'input[name="id"]',
+      'input[name="userId"]',
+      'input[name="username"]',
+      'input#id',
+      'input[type="text"]'
+    ];
+
+    for (const sel of idSelectors) {
+      try {
+        const el = await page.$(sel);
+        if (el) {
+          idInput = el;
+          console.log(`Found ID input with selector: ${sel}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
     }
   }
 
   if (!idInput) {
-    // Take screenshot for debugging
-    const timestamp = Date.now();
-    console.log('Could not find ID input. Page title:', await page.title());
-
-    // Try to find any input field
+    // Debug: list all inputs
     const allInputs = await page.$$('input');
     console.log(`Found ${allInputs.length} input fields on page`);
-
-    for (let i = 0; i < allInputs.length; i++) {
+    for (let i = 0; i < Math.min(allInputs.length, 10); i++) {
       const inp = allInputs[i];
       const type = await inp.getAttribute('type');
       const name = await inp.getAttribute('name');
-      const id = await inp.getAttribute('id');
       const placeholder = await inp.getAttribute('placeholder');
-      console.log(`Input ${i}: type=${type}, name=${name}, id=${id}, placeholder=${placeholder}`);
+      console.log(`Input ${i}: type=${type}, name=${name}, placeholder=${placeholder}`);
     }
-
-    throw new Error('ID 입력 필드를 찾을 수 없습니다. 로그인 페이지 구조가 변경되었을 수 있습니다.');
+    throw new Error('ID 입력 필드를 찾을 수 없습니다');
   }
 
   await idInput.fill(CNSA_ID);
-  console.log('ID entered');
+  console.log('ID entered:', CNSA_ID);
 
-  // Try multiple selectors for password input
-  const pwSelectors = [
-    'input[name="pw"]',
-    'input[name="password"]',
-    'input[name="userPw"]',
-    'input[name="user_pw"]',
-    'input#pw',
-    'input#password',
-    'input[type="password"]'
-  ];
-
+  // Find password input
   let pwInput = null;
-  for (const sel of pwSelectors) {
-    try {
-      pwInput = await page.waitForSelector(sel, { timeout: 3000, state: 'visible' });
-      if (pwInput) {
-        console.log(`Found PW input with selector: ${sel}`);
-        break;
-      }
-    } catch (e) {
-      continue;
+  try {
+    pwInput = await page.$('input[type="password"]');
+    if (pwInput) {
+      console.log('Found password input');
     }
+  } catch (e) {
+    console.log('Password selector failed:', e.message);
   }
 
   if (!pwInput) {
@@ -138,35 +150,42 @@ async function loginToRiroschool(page) {
   console.log('Password entered');
 
   // Click login button
-  const loginSelectors = [
-    'button[type="submit"]',
-    'input[type="submit"]',
-    '.login-btn',
-    '.btn-login',
-    'button:has-text("로그인")',
-    'input[value="로그인"]',
-    'button:has-text("Login")',
-    '#login-btn',
-    '.login_btn'
-  ];
-
   let clicked = false;
-  for (const sel of loginSelectors) {
-    try {
-      const btn = await page.$(sel);
-      if (btn) {
-        await btn.click();
-        console.log(`Clicked login with selector: ${sel}`);
-        clicked = true;
-        break;
+
+  // Method 1: Find button with text 로그인
+  try {
+    const loginBtn = await page.locator('button:has-text("로그인")').first();
+    if (await loginBtn.count() > 0) {
+      await loginBtn.click();
+      clicked = true;
+      console.log('Clicked login button by text');
+    }
+  } catch (e) {
+    console.log('Button text search failed:', e.message);
+  }
+
+  // Method 2: CSS selectors
+  if (!clicked) {
+    const loginSelectors = ['button[type="submit"]', 'input[type="submit"]', '.login-btn', 'button'];
+    for (const sel of loginSelectors) {
+      try {
+        const btn = await page.$(sel);
+        if (btn) {
+          const text = await btn.textContent();
+          if (text && text.includes('로그인')) {
+            await btn.click();
+            clicked = true;
+            console.log(`Clicked login with selector: ${sel}`);
+            break;
+          }
+        }
+      } catch (e) {
+        continue;
       }
-    } catch (e) {
-      continue;
     }
   }
 
   if (!clicked) {
-    // Try pressing Enter as fallback
     await page.keyboard.press('Enter');
     console.log('Pressed Enter as login fallback');
   }
