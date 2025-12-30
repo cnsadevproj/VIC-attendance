@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, type ReactNode } from 'react'
+import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
 
 interface PinchZoomContainerProps {
   children: ReactNode
@@ -12,17 +12,29 @@ export default function PinchZoomContainer({
   maxScale = 3,
 }: PinchZoomContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
   const [position, setPosition] = useState({ x: 0, y: 0 })
-  const [isPinching, setIsPinching] = useState(false)
 
-  // Touch state refs (to avoid re-renders during gesture)
+  // Use refs to track current values without causing re-renders
+  const scaleRef = useRef(scale)
+  const positionRef = useRef(position)
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    scaleRef.current = scale
+  }, [scale])
+
+  useEffect(() => {
+    positionRef.current = position
+  }, [position])
+
+  // Touch state refs
   const touchState = useRef({
     initialDistance: 0,
     initialScale: 1,
     initialPosition: { x: 0, y: 0 },
     lastTouchCenter: { x: 0, y: 0 },
+    isPinching: false,
     isDragging: false,
   })
 
@@ -46,25 +58,28 @@ export default function PinchZoomContainer({
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault()
-        setIsPinching(true)
+        e.stopPropagation()
+        touchState.current.isPinching = true
+        touchState.current.isDragging = false
         touchState.current.initialDistance = getDistance(e.touches[0], e.touches[1])
-        touchState.current.initialScale = scale
-        touchState.current.initialPosition = { ...position }
+        touchState.current.initialScale = scaleRef.current
+        touchState.current.initialPosition = { ...positionRef.current }
         touchState.current.lastTouchCenter = getTouchCenter(e.touches[0], e.touches[1])
-      } else if (e.touches.length === 1 && scale > 1) {
+      } else if (e.touches.length === 1 && scaleRef.current > 1) {
         // Allow panning when zoomed in
         touchState.current.isDragging = true
         touchState.current.lastTouchCenter = {
           x: e.touches[0].clientX,
           y: e.touches[0].clientY,
         }
-        touchState.current.initialPosition = { ...position }
       }
     }
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && isPinching) {
+      if (e.touches.length === 2 && touchState.current.isPinching) {
         e.preventDefault()
+        e.stopPropagation()
+
         const currentDistance = getDistance(e.touches[0], e.touches[1])
         const currentCenter = getTouchCenter(e.touches[0], e.touches[1])
 
@@ -77,23 +92,27 @@ export default function PinchZoomContainer({
         const dx = currentCenter.x - touchState.current.lastTouchCenter.x
         const dy = currentCenter.y - touchState.current.lastTouchCenter.y
 
-        setScale(newScale)
-        setPosition((prev) => ({
-          x: prev.x + dx,
-          y: prev.y + dy,
-        }))
+        const newPosition = {
+          x: positionRef.current.x + dx,
+          y: positionRef.current.y + dy,
+        }
 
+        setScale(newScale)
+        setPosition(newPosition)
         touchState.current.lastTouchCenter = currentCenter
-      } else if (e.touches.length === 1 && touchState.current.isDragging && scale > 1) {
+      } else if (e.touches.length === 1 && touchState.current.isDragging && scaleRef.current > 1) {
         // Pan while zoomed
+        e.preventDefault()
+
         const dx = e.touches[0].clientX - touchState.current.lastTouchCenter.x
         const dy = e.touches[0].clientY - touchState.current.lastTouchCenter.y
 
-        setPosition((prev) => ({
-          x: prev.x + dx,
-          y: prev.y + dy,
-        }))
+        const newPosition = {
+          x: positionRef.current.x + dx,
+          y: positionRef.current.y + dy,
+        }
 
+        setPosition(newPosition)
         touchState.current.lastTouchCenter = {
           x: e.touches[0].clientX,
           y: e.touches[0].clientY,
@@ -103,13 +122,13 @@ export default function PinchZoomContainer({
 
     const handleTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) {
-        setIsPinching(false)
+        touchState.current.isPinching = false
       }
       if (e.touches.length === 0) {
         touchState.current.isDragging = false
 
-        // Reset to default if zoomed out
-        if (scale <= 1) {
+        // Only reset if zoomed out below 1
+        if (scaleRef.current < 1) {
           setScale(1)
           setPosition({ x: 0, y: 0 })
         }
@@ -128,19 +147,23 @@ export default function PinchZoomContainer({
       container.removeEventListener('touchend', handleTouchEnd)
       container.removeEventListener('touchcancel', handleTouchEnd)
     }
-  }, [scale, position, isPinching, minScale, maxScale])
+  }, [minScale, maxScale]) // Only depend on props, not state
 
   // Double tap to reset
   const lastTap = useRef(0)
-  const handleDoubleTap = () => {
+  const handleDoubleTap = useCallback(() => {
     const now = Date.now()
     if (now - lastTap.current < 300) {
-      // Double tap detected - reset zoom
-      setScale(1)
-      setPosition({ x: 0, y: 0 })
+      // Double tap detected - toggle zoom
+      if (scaleRef.current > 1) {
+        setScale(1)
+        setPosition({ x: 0, y: 0 })
+      } else {
+        setScale(2)
+      }
     }
     lastTap.current = now
-  }
+  }, [])
 
   return (
     <div
@@ -149,8 +172,7 @@ export default function PinchZoomContainer({
       onTouchEnd={handleDoubleTap}
     >
       <div
-        ref={contentRef}
-        className="w-full h-full origin-center transition-transform duration-75"
+        className="w-full h-full origin-center"
         style={{
           transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
           transformOrigin: 'center center',
@@ -160,7 +182,7 @@ export default function PinchZoomContainer({
       </div>
       {/* Zoom indicator */}
       {scale !== 1 && (
-        <div className="absolute bottom-4 right-4 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
+        <div className="absolute bottom-4 right-4 bg-black/60 text-white text-xs px-2 py-1 rounded-full pointer-events-none">
           {Math.round(scale * 100)}%
         </div>
       )}
