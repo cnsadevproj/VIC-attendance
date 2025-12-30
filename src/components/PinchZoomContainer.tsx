@@ -36,6 +36,7 @@ export default function PinchZoomContainer({
     lastTouchCenter: { x: 0, y: 0 },
     isPinching: false,
     isDragging: false,
+    wasPinching: false, // Track if we just finished pinching
   })
 
   // Calculate distance between two touch points
@@ -121,8 +122,13 @@ export default function PinchZoomContainer({
     }
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) {
+      if (e.touches.length < 2 && touchState.current.isPinching) {
         touchState.current.isPinching = false
+        touchState.current.wasPinching = true
+        // Reset wasPinching after a delay to allow double-tap detection to work again
+        setTimeout(() => {
+          touchState.current.wasPinching = false
+        }, 400)
       }
       if (e.touches.length === 0) {
         touchState.current.isDragging = false
@@ -152,6 +158,11 @@ export default function PinchZoomContainer({
   // Double tap to reset
   const lastTap = useRef(0)
   const handleDoubleTap = useCallback(() => {
+    // Skip double-tap detection if we just finished pinching
+    if (touchState.current.wasPinching) {
+      return
+    }
+
     const now = Date.now()
     if (now - lastTap.current < 300) {
       // Double tap detected - toggle zoom
