@@ -1,13 +1,13 @@
 # VIC Attendance - 면학실 출결 관리 시스템
 
-충남삼성고등학교 방과후학교 면학실 출결 관리를 위한 웹 애플리케이션입니다.
+방과후학교 면학실 출결 관리를 위한 웹 애플리케이션입니다.
 
 ## 배포 URL
 
 | 서비스 | URL |
 |--------|-----|
 | **웹 애플리케이션** | https://vic-attendance.web.app |
-| **SMS 서버** | https://vic-sms-server-236744560712.asia-northeast3.run.app |
+| **SMS 서버** | Google Cloud Run |
 
 ---
 
@@ -58,7 +58,7 @@
 | **호스팅** | Firebase Hosting |
 | **SMS 서버** | Node.js + Express + Playwright |
 | **SMS 서버 호스팅** | Google Cloud Run |
-| **SMS 자동화** | Playwright (리로스쿨 브라우저 자동화) |
+| **SMS 자동화** | Playwright (브라우저 자동화) |
 | **스프레드시트** | Google Apps Script 연동 |
 
 ---
@@ -129,4 +129,4 @@ gcloud run deploy vic-sms-server \
 
 ## 라이선스
 
-이 프로젝트는 충남삼성고등학교 내부 사용 목적으로 개발되었습니다.
+이 프로젝트는 내부 사용 목적으로 개발되었습니다.

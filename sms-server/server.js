@@ -46,151 +46,48 @@ const SMS_TITLE = '방과후학교 면학 출결 안내';
 
 const TEST_MESSAGE = '이 메시지는 신규 프로그램 테스트를 위해 자동으로 보내진 메시지입니다.';
 
-// Robust login function
+// Robust login function using role-based selectors
 async function loginToRiroschool(page) {
   console.log('Logging into Riroschool...');
 
   // Go directly to login page
   await page.goto('https://cnsa.riroschool.kr/user.php?action=signin', { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(2000);
 
-  // Log current URL
   console.log('Current URL:', page.url());
 
-  // The login form uses textbox role, not input[name]
-  // Try to find ID input by various methods
-  let idInput = null;
-
-  // Method 1: Find by placeholder text
+  // Use role-based selectors (most reliable for this page)
   try {
-    idInput = await page.getByPlaceholder('학교 아이디').or(page.getByPlaceholder('아이디')).or(page.getByPlaceholder('이메일')).first();
-    if (await idInput.count() > 0) {
-      console.log('Found ID input by placeholder');
-    } else {
-      idInput = null;
-    }
+    // Fill ID using role selector
+    const idInput = page.getByRole('textbox', { name: '학교 아이디 또는 통합 아이디(이메일)' });
+    await idInput.fill(CNSA_ID);
+    console.log('ID entered:', CNSA_ID);
+
+    // Fill password using role selector
+    const pwInput = page.getByRole('textbox', { name: '비밀번호' });
+    await pwInput.fill(CNSA_PW);
+    console.log('Password entered');
+
+    // Click login button
+    const loginBtn = page.getByRole('button', { name: '로그인' });
+    await loginBtn.click();
+    console.log('Login button clicked');
+
   } catch (e) {
-    console.log('Placeholder search failed:', e.message);
+    console.log('Role-based login failed, trying fallback:', e.message);
+
+    // Fallback: use CSS selectors for visible inputs
+    const idInput = await page.locator('input[type="text"]:visible').first();
+    await idInput.fill(CNSA_ID);
+
+    const pwInput = await page.locator('input[type="password"]:visible').first();
+    await pwInput.fill(CNSA_PW);
+
+    const loginBtn = await page.locator('button:has-text("로그인"):visible').first();
+    await loginBtn.click();
   }
 
-  // Method 2: Find first textbox that's not password
-  if (!idInput) {
-    try {
-      const textboxes = await page.locator('input[type="text"], input:not([type])').all();
-      for (const tb of textboxes) {
-        const type = await tb.getAttribute('type');
-        if (type !== 'password' && type !== 'hidden') {
-          idInput = tb;
-          console.log('Found ID input as first textbox');
-          break;
-        }
-      }
-    } catch (e) {
-      console.log('Textbox search failed:', e.message);
-    }
-  }
-
-  // Method 3: CSS selectors
-  if (!idInput) {
-    const idSelectors = [
-      'input[name="id"]',
-      'input[name="userId"]',
-      'input[name="username"]',
-      'input#id',
-      'input[type="text"]'
-    ];
-
-    for (const sel of idSelectors) {
-      try {
-        const el = await page.$(sel);
-        if (el) {
-          idInput = el;
-          console.log(`Found ID input with selector: ${sel}`);
-          break;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-  }
-
-  if (!idInput) {
-    // Debug: list all inputs
-    const allInputs = await page.$$('input');
-    console.log(`Found ${allInputs.length} input fields on page`);
-    for (let i = 0; i < Math.min(allInputs.length, 10); i++) {
-      const inp = allInputs[i];
-      const type = await inp.getAttribute('type');
-      const name = await inp.getAttribute('name');
-      const placeholder = await inp.getAttribute('placeholder');
-      console.log(`Input ${i}: type=${type}, name=${name}, placeholder=${placeholder}`);
-    }
-    throw new Error('ID 입력 필드를 찾을 수 없습니다');
-  }
-
-  await idInput.fill(CNSA_ID);
-  console.log('ID entered:', CNSA_ID);
-
-  // Find password input
-  let pwInput = null;
-  try {
-    pwInput = await page.$('input[type="password"]');
-    if (pwInput) {
-      console.log('Found password input');
-    }
-  } catch (e) {
-    console.log('Password selector failed:', e.message);
-  }
-
-  if (!pwInput) {
-    throw new Error('비밀번호 입력 필드를 찾을 수 없습니다');
-  }
-
-  await pwInput.fill(CNSA_PW);
-  console.log('Password entered');
-
-  // Click login button
-  let clicked = false;
-
-  // Method 1: Find button with text 로그인
-  try {
-    const loginBtn = await page.locator('button:has-text("로그인")').first();
-    if (await loginBtn.count() > 0) {
-      await loginBtn.click();
-      clicked = true;
-      console.log('Clicked login button by text');
-    }
-  } catch (e) {
-    console.log('Button text search failed:', e.message);
-  }
-
-  // Method 2: CSS selectors
-  if (!clicked) {
-    const loginSelectors = ['button[type="submit"]', 'input[type="submit"]', '.login-btn', 'button'];
-    for (const sel of loginSelectors) {
-      try {
-        const btn = await page.$(sel);
-        if (btn) {
-          const text = await btn.textContent();
-          if (text && text.includes('로그인')) {
-            await btn.click();
-            clicked = true;
-            console.log(`Clicked login with selector: ${sel}`);
-            break;
-          }
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-  }
-
-  if (!clicked) {
-    await page.keyboard.press('Enter');
-    console.log('Pressed Enter as login fallback');
-  }
-
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(3000);
   console.log('Login completed, current URL:', page.url());
 }
 
