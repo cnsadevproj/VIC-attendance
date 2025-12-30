@@ -6,6 +6,7 @@ import BugReportModal, { type BugReport } from '../components/BugReportModal'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { fetchTodayStaff, isTemporaryPeriod, type TodayStaff } from '../config/staffSchedule'
 import { exportToClipboard, exportToGoogleSheets, isAppsScriptConfigured, getSheetName, type AbsentStudent } from '../services/googleSheets'
+import { sendAbsentSms, type SmsResult } from '../services/smsService'
 import type { AttendanceRecord } from '../types'
 
 interface ZoneSummary {
@@ -267,6 +268,10 @@ export default function AdminDashboard() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [showSmsModal, setShowSmsModal] = useState(false)
+  const [smsMessage, setSmsMessage] = useState<string | null>(null)
+  const [isSendingSms, setIsSendingSms] = useState(false)
+  const [smsResult, setSmsResult] = useState<SmsResult | null>(null)
 
   const handleSearch = (query: string) => {
     setSearchQuery(query)
@@ -848,6 +853,15 @@ export default function AdminDashboard() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
           내보내기
+        </button>
+        <button
+          onClick={() => setShowSmsModal(true)}
+          className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 flex items-center gap-1"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+          결석자 문자
         </button>
         <div className="flex gap-1 ml-auto">
           <button
@@ -1582,6 +1596,186 @@ export default function AdminDashboard() {
               >
                 닫기
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SMS 발송 모달 */}
+      {showSmsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-blue-500 text-white p-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold">결석자 문자 발송</h2>
+              <button
+                onClick={() => {
+                  setShowSmsModal(false)
+                  setSmsMessage(null)
+                  setSmsResult(null)
+                }}
+                className="text-white/80 hover:text-white text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="mb-4">
+                <div className="text-sm text-gray-500 mb-1">선택된 날짜</div>
+                <div className="font-bold text-lg">
+                  {new Date(date + 'T00:00:00').toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    weekday: 'short',
+                  })}
+                </div>
+              </div>
+
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                <div className="text-sm text-gray-500 mb-2">결석자 현황</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-blue-600 font-semibold">1학년:</span>{' '}
+                    {absentStudentsForExport.filter(s => s.grade === 1).length}명
+                  </div>
+                  <div>
+                    <span className="text-green-600 font-semibold">2학년:</span>{' '}
+                    {absentStudentsForExport.filter(s => s.grade === 2).length}명
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-gray-400">
+                  총 {absentStudentsForExport.length}명
+                </div>
+              </div>
+
+              {/* 모드 안내 */}
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="text-sm text-amber-700">
+                  <span className="font-semibold">현재 모드:</span>{' '}
+                  {new Date(date) < new Date('2026-01-07') ? (
+                    <>
+                      <span className="text-amber-600 font-bold">테스트</span>
+                      <span className="text-xs ml-1">(민수정 선생님에게만 발송)</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-green-600 font-bold">실제 발송</span>
+                      <span className="text-xs ml-1">(학생 본인 + 어머니)</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* 결석자 목록 */}
+              {absentStudentsForExport.length > 0 && (
+                <div className="mb-4 max-h-40 overflow-y-auto">
+                  <div className="text-sm text-gray-500 mb-2">문자 발송 대상</div>
+                  <div className="space-y-1">
+                    {absentStudentsForExport.map((student) => (
+                      <div
+                        key={student.seatId}
+                        className="flex items-center gap-2 text-sm p-2 bg-gray-50 rounded"
+                      >
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                          student.grade === 1 ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                        }`}>
+                          {student.grade}학년
+                        </span>
+                        <span className="font-mono text-gray-600">{student.seatId}</span>
+                        <span className="font-medium">{student.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {smsMessage && (
+                <div className={`mb-4 p-3 rounded-lg text-sm ${
+                  smsMessage.includes('실패') || smsMessage.includes('오류')
+                    ? 'bg-red-50 text-red-700'
+                    : 'bg-green-50 text-green-700'
+                }`}>
+                  {smsMessage}
+                </div>
+              )}
+
+              {smsResult && smsResult.results && (
+                <div className="mb-4 max-h-32 overflow-y-auto">
+                  <div className="text-sm text-gray-500 mb-2">발송 결과</div>
+                  <div className="space-y-1">
+                    {smsResult.results.map((result, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-2 text-xs p-2 rounded ${
+                          result.status === 'success' ? 'bg-green-50' : 'bg-red-50'
+                        }`}
+                      >
+                        <span className={result.status === 'success' ? 'text-green-600' : 'text-red-600'}>
+                          {result.status === 'success' ? '✓' : '✗'}
+                        </span>
+                        <span>{result.student}</span>
+                        <span className="text-gray-400">{result.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    setIsSendingSms(true)
+                    setSmsMessage(null)
+                    setSmsResult(null)
+                    try {
+                      const smsStudents = absentStudentsForExport.map(s => ({
+                        studentId: s.seatId,
+                        name: s.name,
+                      }))
+                      const result = await sendAbsentSms(smsStudents)
+                      setSmsResult(result)
+                      setSmsMessage(result.message)
+                    } catch (error) {
+                      setSmsMessage(`SMS 발송 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+                    } finally {
+                      setIsSendingSms(false)
+                    }
+                  }}
+                  disabled={isSendingSms || absentStudentsForExport.length === 0}
+                  className={`w-full py-3 font-semibold rounded-xl transition-colors flex items-center justify-center gap-2
+                    ${isSendingSms || absentStudentsForExport.length === 0
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                    }`}
+                >
+                  {isSendingSms ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      발송 중...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      SMS 발송하기
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSmsModal(false)
+                    setSmsMessage(null)
+                    setSmsResult(null)
+                  }}
+                  className="w-full py-2 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  닫기
+                </button>
+              </div>
             </div>
           </div>
         </div>
