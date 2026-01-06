@@ -7,6 +7,7 @@ import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { fetchTodayStaff, isTemporaryPeriod, type TodayStaff } from '../config/staffSchedule'
 import { exportToClipboard, exportToGoogleSheets, isAppsScriptConfigured, getSheetName, type AbsentStudent } from '../services/googleSheets'
 import { sendAbsentSms, type SmsResult } from '../services/smsService'
+import { usePreAbsences } from '../hooks/usePreAbsences'
 import type { AttendanceRecord } from '../types'
 
 interface ZoneSummary {
@@ -272,6 +273,9 @@ export default function AdminDashboard() {
   const [smsMessage, setSmsMessage] = useState<string | null>(null)
   const [isSendingSms, setIsSendingSms] = useState(false)
   const [smsResult, setSmsResult] = useState<SmsResult | null>(null)
+
+  // 스프레드시트에서 사전결석/외박 데이터 로드
+  const { getPreAbsenceInfo } = usePreAbsences()
 
   const handleSearch = (query: string) => {
     setSearchQuery(query)
@@ -605,13 +609,14 @@ export default function AdminDashboard() {
           const student = getStudentBySeatId(seatId)
           if (student) {
             const record = records.get(seatId)
+            const preAbsInfo = getPreAbsenceInfo(student.studentId, date)
             details.push({
               seatId,
               studentId: student.studentId,
               studentName: student.name,
               status: record?.status || 'unchecked',
-              hasPreAbsence: !!student.preAbsence,
-              preAbsenceReason: student.preAbsence?.reason,
+              hasPreAbsence: !!preAbsInfo,
+              preAbsenceReason: preAbsInfo?.reason,
             })
           }
         }
@@ -619,7 +624,7 @@ export default function AdminDashboard() {
     })
 
     return details
-  }, [selectedZone, selectedDateData])
+  }, [selectedZone, selectedDateData, date, getPreAbsenceInfo])
 
   // 전체 학생 목록 (필터별)
   const allStudentsByStatus = useMemo(() => {
@@ -649,6 +654,7 @@ export default function AdminDashboard() {
             const student = getStudentBySeatId(seatId)
             if (student) {
               const record = records.get(seatId)
+              const preAbsInfo = getPreAbsenceInfo(student.studentId, date)
               students.push({
                 seatId,
                 studentId: student.studentId,
@@ -656,8 +662,8 @@ export default function AdminDashboard() {
                 status: record?.status || 'unchecked',
                 zoneId: zoneSummary.zoneId,
                 zoneName: zoneSummary.zoneName,
-                hasPreAbsence: !!student.preAbsence,
-                preAbsenceReason: student.preAbsence?.reason,
+                hasPreAbsence: !!preAbsInfo,
+                preAbsenceReason: preAbsInfo?.reason,
               })
             }
           }
@@ -666,7 +672,7 @@ export default function AdminDashboard() {
     })
 
     return students
-  }, [filteredSummaries, selectedDateData])
+  }, [filteredSummaries, selectedDateData, date, getPreAbsenceInfo])
 
   // 선택된 필터에 따른 학생 목록
   const filteredStudentsList = useMemo(() => {
@@ -715,9 +721,10 @@ export default function AdminDashboard() {
                 // 비고: 사전결석 사유 + 특이사항 메모
                 const parts: string[] = []
 
-                // 사전결석 사유
-                if (student.preAbsence) {
-                  parts.push(`[사전] ${student.preAbsence.reason}`)
+                // 사전결석/외박 사유
+                const preAbsInfo = getPreAbsenceInfo(student.studentId, date)
+                if (preAbsInfo) {
+                  parts.push(`[${preAbsInfo.type}] ${preAbsInfo.reason}`)
                 }
 
                 // 학생별 특이사항 (별도 localStorage에서)
@@ -1027,36 +1034,49 @@ export default function AdminDashboard() {
           <div className="mb-4">
             <div className="text-sm font-medium text-gray-500 mb-2">1학년 (4층)</div>
             <div className="grid grid-cols-4 gap-2">
-              {grade1Zones.map((zone) => (
-                <div
-                  key={zone.zoneId}
-                  className="bg-white rounded-xl shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setSelectedZone(zone.zoneId)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-gray-800">{zone.zoneId}</span>
-                    {zone.hasTempSave && (
-                      <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">임시</span>
-                    )}
+              {grade1Zones.map((zone) => {
+                const isEmpty = zone.total === 0
+                return (
+                  <div
+                    key={zone.zoneId}
+                    className={`bg-white rounded-xl shadow-sm p-3 transition-shadow ${
+                      isEmpty ? 'opacity-50' : 'cursor-pointer hover:shadow-md'
+                    }`}
+                    onClick={() => !isEmpty && setSelectedZone(zone.zoneId)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-gray-800">{zone.zoneId}</span>
+                      {zone.hasTempSave && (
+                        <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">임시</span>
+                      )}
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
+                      <div
+                        className={`h-full ${getCompletionColor(zone.completionRate)}`}
+                        style={{ width: `${zone.completionRate}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 mb-1">
+                      {isEmpty ? (
+                        <span>0석</span>
+                      ) : (
+                        <>
+                          <span className="text-green-600">{zone.present}</span>
+                          <span className="mx-1">/</span>
+                          <span className="text-red-600">{zone.absent}</span>
+                          <span className="mx-1">/</span>
+                          <span>{zone.unchecked}</span>
+                        </>
+                      )}
+                    </div>
+                    {isEmpty ? (
+                      <div className="text-xs text-gray-400">미배정 교실</div>
+                    ) : zone.recordedBy ? (
+                      <div className="text-xs text-blue-500 truncate">{zone.recordedBy}</div>
+                    ) : null}
                   </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
-                    <div
-                      className={`h-full ${getCompletionColor(zone.completionRate)}`}
-                      style={{ width: `${zone.completionRate}%` }}
-                    />
-                  </div>
-                  <div className="text-xs text-gray-500 mb-1">
-                    <span className="text-green-600">{zone.present}</span>
-                    <span className="mx-1">/</span>
-                    <span className="text-red-600">{zone.absent}</span>
-                    <span className="mx-1">/</span>
-                    <span>{zone.unchecked}</span>
-                  </div>
-                  {zone.recordedBy && (
-                    <div className="text-xs text-blue-500 truncate">{zone.recordedBy}</div>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -1066,36 +1086,49 @@ export default function AdminDashboard() {
           <div className="mb-4">
             <div className="text-sm font-medium text-gray-500 mb-2">2학년 (3층)</div>
             <div className="grid grid-cols-4 gap-2">
-              {grade2Zones.map((zone) => (
-                <div
-                  key={zone.zoneId}
-                  className="bg-white rounded-xl shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setSelectedZone(zone.zoneId)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-gray-800">{zone.zoneId}</span>
-                    {zone.hasTempSave && (
-                      <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">임시</span>
-                    )}
+              {grade2Zones.map((zone) => {
+                const isEmpty = zone.total === 0
+                return (
+                  <div
+                    key={zone.zoneId}
+                    className={`bg-white rounded-xl shadow-sm p-3 transition-shadow ${
+                      isEmpty ? 'opacity-50' : 'cursor-pointer hover:shadow-md'
+                    }`}
+                    onClick={() => !isEmpty && setSelectedZone(zone.zoneId)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-gray-800">{zone.zoneId}</span>
+                      {zone.hasTempSave && (
+                        <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">임시</span>
+                      )}
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
+                      <div
+                        className={`h-full ${getCompletionColor(zone.completionRate)}`}
+                        style={{ width: `${zone.completionRate}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 mb-1">
+                      {isEmpty ? (
+                        <span>0석</span>
+                      ) : (
+                        <>
+                          <span className="text-green-600">{zone.present}</span>
+                          <span className="mx-1">/</span>
+                          <span className="text-red-600">{zone.absent}</span>
+                          <span className="mx-1">/</span>
+                          <span>{zone.unchecked}</span>
+                        </>
+                      )}
+                    </div>
+                    {isEmpty ? (
+                      <div className="text-xs text-gray-400">미배정 교실</div>
+                    ) : zone.recordedBy ? (
+                      <div className="text-xs text-green-500 truncate">{zone.recordedBy}</div>
+                    ) : null}
                   </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
-                    <div
-                      className={`h-full ${getCompletionColor(zone.completionRate)}`}
-                      style={{ width: `${zone.completionRate}%` }}
-                    />
-                  </div>
-                  <div className="text-xs text-gray-500 mb-1">
-                    <span className="text-green-600">{zone.present}</span>
-                    <span className="mx-1">/</span>
-                    <span className="text-red-600">{zone.absent}</span>
-                    <span className="mx-1">/</span>
-                    <span>{zone.unchecked}</span>
-                  </div>
-                  {zone.recordedBy && (
-                    <div className="text-xs text-green-500 truncate">{zone.recordedBy}</div>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -1215,14 +1248,15 @@ export default function AdminDashboard() {
                 <div className="space-y-2">
                   {searchResults.map((result) => {
                     const status = getAttendanceStatus(result.student.seatId, result.zoneId)
+                    const preAbsInfo = getPreAbsenceInfo(result.student.studentId, date)
                     const statusStyles = {
                       present: 'bg-green-100 text-green-700',
-                      absent: result.student.preAbsence ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700',
+                      absent: preAbsInfo ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700',
                       unchecked: 'bg-gray-100 text-gray-500',
                     }
                     const statusLabels = {
                       present: '출석',
-                      absent: result.student.preAbsence ? '사전결석' : '결석',
+                      absent: preAbsInfo ? (preAbsInfo.type === '외박' ? '외박' : '사전결석') : '결석',
                       unchecked: '미체크',
                     }
                     return (
@@ -1244,9 +1278,11 @@ export default function AdminDashboard() {
                           <span className="mx-2">|</span>
                           <span>좌석: {result.student.seatId}</span>
                         </div>
-                        {result.student.preAbsence && (
-                          <div className="mt-2 text-sm text-purple-600 bg-purple-50 px-2 py-1 rounded">
-                            사전 결석: {result.student.preAbsence.reason}
+                        {preAbsInfo && (
+                          <div className={`mt-2 text-sm px-2 py-1 rounded ${
+                            preAbsInfo.type === '외박' ? 'text-indigo-600 bg-indigo-50' : 'text-purple-600 bg-purple-50'
+                          }`}>
+                            {preAbsInfo.type === '외박' ? '외박' : '사전 결석'}: {preAbsInfo.reason}
                           </div>
                         )}
                       </div>

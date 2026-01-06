@@ -8,8 +8,8 @@ interface PinchZoomContainerProps {
 
 export default function PinchZoomContainer({
   children,
-  minScale = 0.5,
-  maxScale = 3,
+  minScale = 1,
+  maxScale = 2,
 }: PinchZoomContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
@@ -133,8 +133,8 @@ export default function PinchZoomContainer({
       if (e.touches.length === 0) {
         touchState.current.isDragging = false
 
-        // Only reset if zoomed out below 1
-        if (scaleRef.current < 1) {
+        // Scale이 minScale에 매우 가까우면 1로 리셋 (부드러운 동작)
+        if (scaleRef.current <= 1.05) {
           setScale(1)
           setPosition({ x: 0, y: 0 })
         }

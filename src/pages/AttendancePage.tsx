@@ -6,13 +6,18 @@ import PinchZoomContainer from '../components/PinchZoomContainer'
 import type { AttendanceRecord, CurrentStaff } from '../types'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { getStudentBySeatId } from '../config/mockStudents'
-import { isPreAbsentOnDate, getPreAbsenceInfo } from '../config/preAbsences'
+import { usePreAbsences } from '../hooks/usePreAbsences'
 
 interface StudentModalData {
   studentName: string
   studentId: string
   seatId: string
-  preAbsenceReason?: string
+  preAbsenceInfo?: {
+    reason: string
+    type: '사전결석' | '외박'
+    startDate: string
+    endDate: string
+  } | null
   note: string
 }
 
@@ -84,6 +89,10 @@ export default function AttendancePage() {
   const [alertModal, setAlertModal] = useState<{ title: string; message: string; onConfirm?: () => void } | null>(null)
   const [hasTempSave, setHasTempSave] = useState(false)
   const [studentNotes, setStudentNotes] = useState<Record<string, string>>({})
+  const [preAbsenceProcessed, setPreAbsenceProcessed] = useState(false)
+
+  // 스프레드시트에서 사전결석/외박 데이터 로드
+  const { entries: preAbsenceEntries, getPreAbsenceInfo, isLoading: preAbsenceLoading } = usePreAbsences()
 
   // 오늘 날짜 키
   const todayKey = new Date().toISOString().split('T')[0]
@@ -131,7 +140,7 @@ export default function AttendancePage() {
     setStudentNotes(getAllStudentNotes(dateKey))
   }, [dateKey])
 
-  // 저장된 데이터 또는 임시저장 데이터 복원 + 사전 결석 학생 자동 처리
+  // 저장된 데이터 또는 임시저장 데이터 복원
   useEffect(() => {
     // 관리자에서 특정 날짜 데이터를 보러 온 경우 - navigation state에서 직접 가져옴
     if (fromAdmin && viewDate && viewData) {
@@ -140,6 +149,7 @@ export default function AttendancePage() {
         setAttendanceRecords(restoredRecords)
         setHasTempSave(false)
         setHasChanges(false)
+        setPreAbsenceProcessed(true) // 조회 모드에서는 사전결석 처리 불필요
         return
       } catch (e) {
         console.error('조회 데이터 복원 실패:', e)
@@ -156,6 +166,7 @@ export default function AttendancePage() {
         setAttendanceRecords(restoredRecords)
         setHasTempSave(false)
         setHasChanges(false) // 이미 저장된 상태이므로 변경사항 없음
+        setPreAbsenceProcessed(true) // 저장된 데이터가 있으면 사전결석 처리 불필요
         return
       } catch (e) {
         console.error('저장된 데이터 복원 실패:', e)
@@ -171,18 +182,36 @@ export default function AttendancePage() {
         setAttendanceRecords(restoredRecords)
         setHasTempSave(true)
         setHasChanges(true)
+        setPreAbsenceProcessed(true) // 임시저장 데이터가 있으면 사전결석 처리 불필요
         return
       } catch (e) {
         console.error('임시저장 데이터 복원 실패:', e)
       }
     }
 
-    // 저장된 데이터도 임시저장 데이터도 없으면 사전 결석 학생 자동 결석 처리
+    // 저장된 데이터가 없으면 사전결석 처리 대기
+    setPreAbsenceProcessed(false)
+  }, [zoneId, todayKey, fromAdmin, viewDate, viewData])
+
+  // 사전 결석 학생 자동 결석 처리 (스프레드시트 데이터 로드 후)
+  useEffect(() => {
+    // 이미 처리됨, 로딩 중, 또는 조회 모드면 스킵
+    if (preAbsenceProcessed || preAbsenceLoading || viewDate) return
+
+    // 로딩 완료 후 직접 entries를 사용하여 사전결석 학생 체크
     const preAbsenceRecords = new Map<string, AttendanceRecord>()
     assignedSeats.forEach((seatId) => {
       const student = getStudentBySeatId(seatId)
-      // 오늘 날짜에 사전결석인 학생만 자동 결석 처리
-      if (student && isPreAbsentOnDate(student.studentId, todayKey)) {
+      if (!student) return
+
+      // 오늘 날짜에 사전결석인지 직접 entries에서 확인
+      const hasPreAbsence = preAbsenceEntries.some(entry =>
+        entry.studentId === student.studentId &&
+        todayKey >= entry.startDate &&
+        todayKey <= entry.endDate
+      )
+
+      if (hasPreAbsence) {
         preAbsenceRecords.set(seatId, {
           studentId: seatId,
           status: 'absent',
@@ -196,7 +225,8 @@ export default function AttendancePage() {
       setAttendanceRecords(preAbsenceRecords)
       setHasChanges(true)
     }
-  }, [zoneId, todayKey, fromAdmin, viewDate, viewData, assignedSeats, currentStaff])
+    setPreAbsenceProcessed(true)
+  }, [preAbsenceProcessed, preAbsenceLoading, preAbsenceEntries, viewDate, assignedSeats, todayKey, currentStaff])
 
   // Get display date in Korean format (viewDate when from admin, otherwise today)
   const displayDate = useMemo(() => {
@@ -245,15 +275,13 @@ export default function AttendancePage() {
     const student = getStudentBySeatId(seatId)
     if (student) {
       const note = getStudentNote(seatId, dateKey)
-      // 현재 날짜에 사전결석인 경우에만 사유 표시
-      const preAbsenceInfo = isPreAbsentOnDate(student.studentId, dateKey)
-        ? getPreAbsenceInfo(student.studentId)
-        : null
+      // 현재 날짜에 사전결석/외박인 경우 정보 가져오기
+      const info = getPreAbsenceInfo(student.studentId, dateKey)
       setStudentModal({
         studentName: student.name,
         studentId: student.studentId,
         seatId: seatId,
-        preAbsenceReason: preAbsenceInfo?.reason,
+        preAbsenceInfo: info,
         note: note,
       })
       setNoteInput(note)
@@ -509,6 +537,7 @@ export default function AttendancePage() {
             attendanceRecords={attendanceRecords}
             studentNotes={studentNotes}
             dateKey={dateKey}
+            preAbsenceEntries={preAbsenceEntries}
             onSeatClick={handleSeatClick}
             onSeatLongPress={handleSeatLongPress}
           />
@@ -575,11 +604,30 @@ export default function AttendancePage() {
                 <div className="text-gray-600">좌석: {studentModal.seatId}</div>
               </div>
 
-              {/* 사전 결석 사유 (있는 경우) */}
-              {studentModal.preAbsenceReason && (
-                <div className="bg-purple-50 p-4 rounded-xl border-2 border-purple-300">
-                  <div className="text-purple-600 text-sm font-semibold mb-1">사전 결석 신청</div>
-                  <div className="text-purple-800">{studentModal.preAbsenceReason}</div>
+              {/* 사전 결석/외박 정보 (있는 경우) */}
+              {studentModal.preAbsenceInfo && (
+                <div className={`p-4 rounded-xl border-2 ${
+                  studentModal.preAbsenceInfo.type === '외박'
+                    ? 'bg-indigo-50 border-indigo-300'
+                    : 'bg-purple-50 border-purple-300'
+                }`}>
+                  <div className={`text-sm font-semibold mb-1 ${
+                    studentModal.preAbsenceInfo.type === '외박'
+                      ? 'text-indigo-600'
+                      : 'text-purple-600'
+                  }`}>
+                    {studentModal.preAbsenceInfo.type === '외박' ? '외박 신청' : '사전 결석 신청'}
+                  </div>
+                  <div className={`font-medium ${
+                    studentModal.preAbsenceInfo.type === '외박'
+                      ? 'text-indigo-800'
+                      : 'text-purple-800'
+                  }`}>
+                    {studentModal.preAbsenceInfo.reason || (studentModal.preAbsenceInfo.type === '외박' ? '외박' : '사전 결석')}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    기간: {studentModal.preAbsenceInfo.startDate} ~ {studentModal.preAbsenceInfo.endDate}
+                  </div>
                 </div>
               )}
 

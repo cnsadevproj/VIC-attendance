@@ -12,11 +12,20 @@ interface SeatProps {
   onLongPress?: () => void  // 꾹 누르면 호출
 }
 
-const statusClasses: Record<string, string> = {
-  present: 'bg-green-100 border-green-500 text-green-800',
-  absent: 'bg-red-100 border-red-500 text-red-800',
-  unchecked: 'bg-yellow-50 border-gray-300 text-gray-600',
-  unassigned: 'bg-gray-100 border-gray-300 text-gray-400',
+// 배경색과 텍스트색만 (테두리는 별도 처리)
+const statusBgClasses: Record<string, string> = {
+  present: 'bg-green-100 text-green-800',
+  absent: 'bg-red-100 text-red-800',
+  unchecked: 'bg-yellow-50 text-gray-600',
+  unassigned: 'bg-gray-100 text-gray-400',
+}
+
+// 기본 테두리색 (사전결석이 아닐 때)
+const statusBorderClasses: Record<string, string> = {
+  present: 'border-green-500',
+  absent: 'border-red-500',
+  unchecked: 'border-gray-300',
+  unassigned: 'border-gray-300',
 }
 
 const statusLabels: Record<string, string> = {
@@ -58,7 +67,8 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
       <div
         className={`
           seat mx-0.5 relative
-          ${statusClasses.unassigned}
+          ${statusBgClasses.unassigned}
+          ${statusBorderClasses.unassigned}
           border-2 rounded-lg
           cursor-default
           flex flex-col items-center justify-center
@@ -70,10 +80,10 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
     )
   }
 
-  // 사전 결석 학생은 보라색 테두리로 표시
+  // 사전 결석/외박 학생은 항상 보라색 테두리로 표시
   const borderClass = hasPreAbsence
     ? 'border-purple-500 border-[3px]'
-    : 'border-2'
+    : `${statusBorderClasses[status]} border-2`
 
   return (
     <button
@@ -85,7 +95,7 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
       onMouseLeave={handleTouchEnd}
       className={`
         seat mx-0.5 relative
-        ${statusClasses[status]}
+        ${statusBgClasses[status]}
         ${borderClass}
         rounded-lg
         hover:scale-105 active:scale-95

@@ -297,28 +297,40 @@ export default function HomePage() {
                 const status = zoneStatuses[zone.id]
                 const isComplete = status?.isComplete
 
+                const isEmpty = status && status.total === 0
+
                 return (
                   <button
                     key={zone.id}
-                    onClick={() => handleZoneClick(zone.id)}
+                    onClick={() => !isEmpty && handleZoneClick(zone.id)}
+                    disabled={isEmpty}
                     className={`${zone.color} p-6 rounded-xl border-2
-                               ${isComplete ? 'border-green-500 ring-2 ring-green-300' : 'border-gray-300'}
-                               hover:scale-105 hover:shadow-lg transition-all duration-200
+                               ${isEmpty ? 'opacity-50 cursor-not-allowed border-gray-300' :
+                                 isComplete ? 'border-green-500 ring-2 ring-green-300' : 'border-gray-300'}
+                               ${!isEmpty ? 'hover:scale-105 hover:shadow-lg' : ''}
+                               transition-all duration-200
                                flex flex-col items-center justify-center min-h-[120px]`}
                   >
                     <span className="text-3xl font-bold text-gray-800">{zone.name}</span>
 
-                    {status && status.total > 0 ? (
-                      <div className="mt-2 text-center">
-                        <div className="text-sm text-gray-600">
-                          {status.total}석
+                    {status ? (
+                      isEmpty ? (
+                        <div className="mt-2 text-center">
+                          <div className="text-sm text-gray-500">0석</div>
+                          <div className="text-xs text-gray-400 mt-1">미배정 교실</div>
                         </div>
-                        {isComplete && (
-                          <div className="mt-1 text-sm font-semibold text-green-600">
-                            출결입력 완료
+                      ) : (
+                        <div className="mt-2 text-center">
+                          <div className="text-sm text-gray-600">
+                            {status.total}석
                           </div>
-                        )}
-                      </div>
+                          {isComplete && (
+                            <div className="mt-1 text-sm font-semibold text-green-600">
+                              출결입력 완료
+                            </div>
+                          )}
+                        </div>
+                      )
                     ) : (
                       <span className="text-sm text-gray-600 mt-2">로딩중...</span>
                     )}
