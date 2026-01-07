@@ -6,6 +6,9 @@ export interface SmsStudent {
   name: string
 }
 
+// 수신자 타입
+export type RecipientType = 'student_and_parent' | 'parent_only' | 'student_only'
+
 export interface SmsResult {
   mode: 'test' | 'production'
   message: string
@@ -17,14 +20,25 @@ export interface SmsResult {
   }>
 }
 
-// 결석자에게 SMS 발송
+// 결석자에게 SMS 발송 (기본: 학생+학부모)
 export async function sendAbsentSms(absentStudents: SmsStudent[]): Promise<SmsResult> {
+  return sendCategorySms(absentStudents, 'student_and_parent')
+}
+
+// 카테고리별 SMS 발송
+export async function sendCategorySms(
+  students: SmsStudent[],
+  recipientType: RecipientType
+): Promise<SmsResult> {
   const response = await fetch(`${SMS_API_URL}/api/send-absent-sms`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ absentStudents }),
+    body: JSON.stringify({
+      absentStudents: students,
+      recipientType
+    }),
   })
 
   if (!response.ok) {

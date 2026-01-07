@@ -6,7 +6,7 @@ import BugReportModal, { type BugReport } from '../components/BugReportModal'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { fetchTodayStaff, isTemporaryPeriod, type TodayStaff } from '../config/staffSchedule'
 import { exportToClipboard, exportToGoogleSheets, isAppsScriptConfigured, getSheetName, type AbsentStudent, type StudentWithNote } from '../services/googleSheets'
-// SMS 서비스는 이제 수동 발송으로 변경됨
+import { sendCategorySms, type SmsStudent } from '../services/smsService'
 import { usePreAbsences } from '../hooks/usePreAbsences'
 import { getTodayKST } from '../utils/date'
 import { zoneAttendanceService, type ZoneAttendanceData } from '../services/zoneAttendanceService'
@@ -273,6 +273,7 @@ export default function AdminDashboard() {
   const [isExporting, setIsExporting] = useState(false)
   const [showSmsModal, setShowSmsModal] = useState(false)
   const [smsMessage, setSmsMessage] = useState<string | null>(null)
+  const [isSendingSms, setIsSendingSms] = useState(false)
   const [showNotesModal, setShowNotesModal] = useState(false)
   const [excludePreAbsence, setExcludePreAbsence] = useState(false)
 
@@ -1818,25 +1819,6 @@ export default function AdminDashboard() {
           ? dormNoOvernightAbsent.filter(s => !s.isPreAbsence)
           : dormNoOvernightAbsent
 
-        const copyToClipboard = async (studentIds: string[], label: string) => {
-          const text = studentIds.join('\n')
-          try {
-            await navigator.clipboard.writeText(text)
-            setSmsMessage(`${label} 학번 ${studentIds.length}명 복사됨!`)
-          } catch {
-            setSmsMessage('복사 실패')
-          }
-        }
-
-        const MSG_COMMUTE = `안녕하세요, 충남삼성고입니다.
-본 메시지는 금일 08:30 면학실 출석 확인이 되지 않은 학생을 대상으로 자동 발송됩니다. 출석 확인은 08:30부터 면학실에서 진행되오니, 반드시 출석 체크를 완료한 후 방과후 교실로 이동해 주시기 바랍니다. 원활한 운영을 위해 협조 부탁드립니다. 감사합니다.`
-
-        const MSG_DORM_OVERNIGHT = `안녕하세요, 충남삼성고입니다.
-오늘은 방과후 수업일입니다. 귀댁의 학생이 아침 출결확인에 참여하지 않아 출석체크가 되지 않은 학부모님들께 자동으로 메시지를 보내드립니다. 출결확인 시간과 장소는 면학실(08:30)입니다. 출석 체크 후 방과후 교실로 이동할 수 있도록 협조 부탁 드립니다. 감사합니다.`
-
-        const MSG_DORM_NO_OVERNIGHT = `안녕하세요, 충남삼성고입니다.
-본 메시지는 금일 08:30 면학실 출석 확인이 되지 않은 학생을 대상으로 자동 발송됩니다. 출석 확인은 08:30부터 면학실에서 진행되오니, 반드시 출석 체크를 완료한 후 방과후 교실로 이동해 주시기 바랍니다. 원활한 운영을 위해 협조 부탁드립니다. 감사합니다.`
-
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
@@ -1894,28 +1876,12 @@ export default function AdminDashboard() {
                       <span className="font-bold text-blue-700">1. 통학생</span>
                       <span className="ml-2 text-sm text-blue-600">({filteredCommute.length}명)</span>
                     </div>
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">학생+학부모 / 앱 또는 문자</span>
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">학생+학부모</span>
                   </div>
                   {filteredCommute.length > 0 ? (
-                    <>
-                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                        {filteredCommute.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => copyToClipboard(filteredCommute.map(s => s.studentId), '통학생')}
-                          className="flex-1 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600"
-                        >
-                          학번 복사 ({filteredCommute.length}명)
-                        </button>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(MSG_COMMUTE)}
-                          className="px-3 py-2 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200"
-                        >
-                          문구 복사
-                        </button>
-                      </div>
-                    </>
+                    <div className="text-xs text-gray-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
+                      {filteredCommute.map(s => `${s.studentId} ${s.name}`).join(', ')}
+                    </div>
                   ) : (
                     <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
                   )}
@@ -1928,28 +1894,12 @@ export default function AdminDashboard() {
                       <span className="font-bold text-indigo-700">2. 기숙사 (외박 신청)</span>
                       <span className="ml-2 text-sm text-indigo-600">({dormOvernightAbsent.length}명)</span>
                     </div>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">학부모만 / 문자만</span>
+                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">학부모만</span>
                   </div>
                   {dormOvernightAbsent.length > 0 ? (
-                    <>
-                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                        {dormOvernightAbsent.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => copyToClipboard(dormOvernightAbsent.map(s => s.studentId), '기숙(외박)')}
-                          className="flex-1 py-2 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600"
-                        >
-                          학번 복사 ({dormOvernightAbsent.length}명)
-                        </button>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(MSG_DORM_OVERNIGHT)}
-                          className="px-3 py-2 bg-indigo-100 text-indigo-700 text-sm rounded-lg hover:bg-indigo-200"
-                        >
-                          문구 복사
-                        </button>
-                      </div>
-                    </>
+                    <div className="text-xs text-gray-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
+                      {dormOvernightAbsent.map(s => `${s.studentId} ${s.name}`).join(', ')}
+                    </div>
                   ) : (
                     <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
                   )}
@@ -1962,43 +1912,75 @@ export default function AdminDashboard() {
                       <span className="font-bold text-purple-700">3. 기숙사 (외박 미신청)</span>
                       <span className="ml-2 text-sm text-purple-600">({filteredDormNoOvernight.length}명)</span>
                     </div>
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">학생만 / 앱 또는 문자</span>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">학생만</span>
                   </div>
                   {filteredDormNoOvernight.length > 0 ? (
-                    <>
-                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                        {filteredDormNoOvernight.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => copyToClipboard(filteredDormNoOvernight.map(s => s.studentId), '기숙(외박X)')}
-                          className="flex-1 py-2 bg-purple-500 text-white text-sm font-medium rounded-lg hover:bg-purple-600"
-                        >
-                          학번 복사 ({filteredDormNoOvernight.length}명)
-                        </button>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(MSG_DORM_NO_OVERNIGHT)}
-                          className="px-3 py-2 bg-purple-100 text-purple-700 text-sm rounded-lg hover:bg-purple-200"
-                        >
-                          문구 복사
-                        </button>
-                      </div>
-                    </>
+                    <div className="text-xs text-gray-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
+                      {filteredDormNoOvernight.map(s => `${s.studentId} ${s.name}`).join(', ')}
+                    </div>
                   ) : (
                     <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
                   )}
                 </div>
 
-                {/* 사용 안내 */}
-                <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-500">
-                  <div className="font-medium mb-1">사용 방법:</div>
-                  <ol className="list-decimal list-inside space-y-1">
-                    <li>각 카테고리의 "학번 복사" 클릭</li>
-                    <li>주소록에서 학번으로 검색하여 선택</li>
-                    <li>"문구 복사" 후 메시지 작성란에 붙여넣기</li>
-                    <li>앱/문자 선택 후 발송</li>
-                  </ol>
-                </div>
+                {/* SMS 전송 버튼 */}
+                {(filteredCommute.length > 0 || dormOvernightAbsent.length > 0 || filteredDormNoOvernight.length > 0) && (
+                  <button
+                    onClick={async () => {
+                      const totalCount = filteredCommute.length + dormOvernightAbsent.length + filteredDormNoOvernight.length
+                      if (!confirm(`총 ${totalCount}명에게 SMS를 발송하시겠습니까?\n\n1. 통학생 ${filteredCommute.length}명 (학생+학부모)\n2. 기숙 외박 ${dormOvernightAbsent.length}명 (학부모만)\n3. 기숙 외박X ${filteredDormNoOvernight.length}명 (학생만)`)) {
+                        return
+                      }
+
+                      setIsSendingSms(true)
+                      setSmsMessage(null)
+
+                      try {
+                        const results: string[] = []
+
+                        // 카테고리 1: 통학생 (학생+학부모)
+                        if (filteredCommute.length > 0) {
+                          const students: SmsStudent[] = filteredCommute.map(s => ({
+                            studentId: s.studentId,
+                            name: s.name
+                          }))
+                          await sendCategorySms(students, 'student_and_parent')
+                          results.push(`통학생 ${filteredCommute.length}명`)
+                        }
+
+                        // 카테고리 2: 기숙 외박 (학부모만)
+                        if (dormOvernightAbsent.length > 0) {
+                          const students: SmsStudent[] = dormOvernightAbsent.map(s => ({
+                            studentId: s.studentId,
+                            name: s.name
+                          }))
+                          await sendCategorySms(students, 'parent_only')
+                          results.push(`기숙외박 ${dormOvernightAbsent.length}명`)
+                        }
+
+                        // 카테고리 3: 기숙 외박X (학생만)
+                        if (filteredDormNoOvernight.length > 0) {
+                          const students: SmsStudent[] = filteredDormNoOvernight.map(s => ({
+                            studentId: s.studentId,
+                            name: s.name
+                          }))
+                          await sendCategorySms(students, 'student_only')
+                          results.push(`기숙 ${filteredDormNoOvernight.length}명`)
+                        }
+
+                        setSmsMessage(`✅ SMS 발송 완료: ${results.join(', ')}`)
+                      } catch (error) {
+                        setSmsMessage(`❌ SMS 발송 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+                      } finally {
+                        setIsSendingSms(false)
+                      }
+                    }}
+                    disabled={isSendingSms}
+                    className="w-full py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {isSendingSms ? '발송 중...' : `SMS 전송 (총 ${filteredCommute.length + dormOvernightAbsent.length + filteredDormNoOvernight.length}명)`}
+                  </button>
+                )}
               </div>
 
               <div className="p-4 border-t flex-shrink-0">
