@@ -944,7 +944,8 @@ async function sendTestSMS() {
 }
 
 // Production SMS sending to students
-async function sendAbsentSMS(absentStudents) {
+// recipientType: 'student_and_parent' | 'parent_only' | 'student_only'
+async function sendAbsentSMS(absentStudents, recipientType = 'student_and_parent') {
   const browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -1055,12 +1056,25 @@ async function sendAbsentSMS(absentStudents) {
           continue;
         }
 
-        // Select recipients: 학생(본인) + 어머니
-        await page.evaluate(() => {
+        // Select recipients based on recipientType
+        await page.evaluate((recType) => {
           const labels = document.querySelectorAll('label');
           for (const label of labels) {
             const text = label.textContent || '';
-            if (text.includes('학생(본인)') || text.includes('어머니')) {
+            let shouldSelect = false;
+
+            if (recType === 'student_and_parent') {
+              // 학생(본인) + 어머니
+              shouldSelect = text.includes('학생(본인)') || text.includes('어머니');
+            } else if (recType === 'parent_only') {
+              // 어머니만
+              shouldSelect = text.includes('어머니');
+            } else if (recType === 'student_only') {
+              // 학생(본인)만
+              shouldSelect = text.includes('학생(본인)');
+            }
+
+            if (shouldSelect) {
               const checkbox = label.querySelector('input[type="checkbox"]') ||
                               document.getElementById(label.getAttribute('for'));
               if (checkbox && !checkbox.checked) {
@@ -1068,7 +1082,7 @@ async function sendAbsentSMS(absentStudents) {
               }
             }
           }
-        });
+        }, recipientType);
         await page.waitForTimeout(500);
 
         // Enter title if available
@@ -1180,8 +1194,9 @@ app.post('/api/test-sms', async (req, res) => {
 });
 
 // Main endpoint - behavior depends on date
+// recipientType: 'student_and_parent' | 'parent_only' | 'student_only'
 app.post('/api/send-absent-sms', async (req, res) => {
-  const { absentStudents } = req.body;
+  const { absentStudents, recipientType = 'student_and_parent' } = req.body;
 
   if (!CNSA_ID || !CNSA_PW) {
     return res.status(500).json({ error: 'CNSA credentials not configured' });
@@ -1196,6 +1211,7 @@ app.post('/api/send-absent-sms', async (req, res) => {
         mode: 'test',
         message: '테스트 모드: 민수정 선생님에게 발송됨 (2026-01-07 이후 학생에게 발송)',
         absentStudentsReceived: absentStudents?.length || 0,
+        recipientType,
         result
       });
     } catch (err) {
@@ -1208,19 +1224,30 @@ app.post('/api/send-absent-sms', async (req, res) => {
   if (!absentStudents || !Array.isArray(absentStudents) || absentStudents.length === 0) {
     return res.status(400).json({
       error: 'absentStudents array is required',
-      example: [{ studentId: '10823', name: '홍길동' }]
+      example: [{ studentId: '10823', name: '홍길동' }],
+      recipientTypes: ['student_and_parent', 'parent_only', 'student_only']
+    });
+  }
+
+  // Validate recipientType
+  const validTypes = ['student_and_parent', 'parent_only', 'student_only'];
+  if (!validTypes.includes(recipientType)) {
+    return res.status(400).json({
+      error: 'Invalid recipientType',
+      validTypes
     });
   }
 
   try {
-    console.log(`Sending SMS to ${absentStudents.length} absent students...`);
-    const results = await sendAbsentSMS(absentStudents);
+    console.log(`Sending SMS to ${absentStudents.length} students (recipientType: ${recipientType})...`);
+    const results = await sendAbsentSMS(absentStudents, recipientType);
 
     const successful = results.filter(r => r.status === 'success').length;
     const failed = results.filter(r => r.status === 'error').length;
 
     res.json({
       mode: 'production',
+      recipientType,
       message: `SMS sending completed: ${successful} success, ${failed} failed`,
       results
     });
