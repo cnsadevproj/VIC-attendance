@@ -26,7 +26,9 @@ export function usePreAbsences(): UsePreAbsencesResult {
     try {
       setIsLoading(true)
       setError(null)
+      console.log('[usePreAbsences] Fetching data...')
       const data = await fetchAbsenceData()
+      console.log('[usePreAbsences] Data received:', data)
       setEntries(data)
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to load data'))

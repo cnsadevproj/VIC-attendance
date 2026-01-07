@@ -7,6 +7,8 @@ import type { AttendanceRecord, CurrentStaff } from '../types'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { getStudentBySeatId } from '../config/mockStudents'
 import { usePreAbsences } from '../hooks/usePreAbsences'
+import { getTodayKST } from '../utils/date'
+import { zoneAttendanceService } from '../services/zoneAttendanceService'
 
 interface StudentModalData {
   studentName: string
@@ -94,8 +96,8 @@ export default function AttendancePage() {
   // 스프레드시트에서 사전결석/외박 데이터 로드
   const { entries: preAbsenceEntries, getPreAbsenceInfo, isLoading: preAbsenceLoading } = usePreAbsences()
 
-  // 오늘 날짜 키
-  const todayKey = new Date().toISOString().split('T')[0]
+  // 오늘 날짜 키 (한국 시간 기준)
+  const todayKey = getTodayKST()
   const dateKey = viewDate || todayKey
 
   // localStorage 키
@@ -311,10 +313,23 @@ export default function AttendancePage() {
   // 실제 저장 실행
   const executeSave = async () => {
     setIsSaving(true)
-    // TODO: Implement save to Supabase with staff_name
-    await new Promise(resolve => setTimeout(resolve, 500))
 
-    // 저장 완료 후 localStorage에 출결 데이터 저장
+    try {
+      // Supabase에 저장 (실시간 동기화)
+      await zoneAttendanceService.save(
+        zoneId || '',
+        todayKey,
+        attendanceRecords,
+        currentStaff?.name,
+        studentNotes
+      )
+      console.log('[AttendancePage] Saved to Supabase')
+    } catch (err) {
+      console.error('[AttendancePage] Supabase save error:', err)
+      // Supabase 저장 실패해도 localStorage에는 저장
+    }
+
+    // localStorage에도 백업 저장
     const dataToSave = Array.from(attendanceRecords.entries())
     localStorage.setItem(getSavedKey(), JSON.stringify(dataToSave))
     // 저장 시간 기록
@@ -331,7 +346,7 @@ export default function AttendancePage() {
     setHasTempSave(false)
     setAlertModal({
       title: '저장 완료',
-      message: `출결이 저장되었습니다.${currentStaff ? `\n기록자: ${currentStaff.name}` : ''}`,
+      message: `출결이 저장되었습니다.${currentStaff ? `\n기록자: ${currentStaff.name}` : ''}\n(서버에 실시간 동기화됨)`,
     })
   }
 

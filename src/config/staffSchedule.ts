@@ -1,4 +1,5 @@
 // Staff schedule types and utilities
+import { getTodayKST } from '../utils/date'
 
 export interface StaffSchedule {
   schedule_date: string
@@ -68,7 +69,8 @@ const ALL_STAFF_SCHEDULE: Record<string, TodayStaff> = {
 
 // Fetch today's staff assignments
 export async function fetchTodayStaff(): Promise<TodayStaff> {
-  const today = new Date().toISOString().split('T')[0]  // YYYY-MM-DD format
+  const today = getTodayKST()  // 한국 시간 기준
+  console.log('[fetchTodayStaff] Today (KST):', today)
   return ALL_STAFF_SCHEDULE[today] || { grade1: null, grade2: null }
 }
 

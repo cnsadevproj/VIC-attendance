@@ -5,6 +5,7 @@ import BugReportModal from '../components/BugReportModal'
 import { searchStudentByName, getStudentBySeatId, type StudentSearchResult } from '../config/mockStudents'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { isTemporaryPeriod } from '../config/staffSchedule'
+import { getTodayKST } from '../utils/date'
 import type { AttendanceRecord } from '../types'
 
 interface CurrentStaff {
@@ -116,8 +117,8 @@ export default function HomePage() {
   const [showBugReport, setShowBugReport] = useState(false)
   const [zoneStatuses, setZoneStatuses] = useState<Record<string, ZoneStatus>>({})
 
-  // 오늘 날짜 키
-  const todayKey = new Date().toISOString().split('T')[0]
+  // 오늘 날짜 키 (한국 시간 기준)
+  const todayKey = getTodayKST()
 
   // 관리자 특이사항 불러오기
   useEffect(() => {
@@ -170,8 +171,8 @@ export default function HomePage() {
     const staffData = sessionStorage.getItem('currentStaff')
     if (staffData) {
       const staff = JSON.parse(staffData) as CurrentStaff
-      // Check if it's still today's date
-      const today = new Date().toISOString().split('T')[0]
+      // Check if it's still today's date (한국 시간 기준)
+      const today = getTodayKST()
       if (staff.date === today) {
         setCurrentStaff(staff)
       } else {

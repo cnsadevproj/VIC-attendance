@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchTodayStaff, type TodayStaff } from '../config/staffSchedule'
+import { getTodayKST } from '../utils/date'
 
 type Step = 'guide' | 'staff-select'
 
@@ -29,7 +30,10 @@ export default function LandingPage() {
   })
 
   useEffect(() => {
+    const today = getTodayKST()
+    console.log('[LandingPage] Today (KST):', today)
     fetchTodayStaff().then((staff) => {
+      console.log('[LandingPage] Staff data:', staff)
       setTodayStaff(staff)
       setLoading(false)
     })
@@ -40,7 +44,7 @@ export default function LandingPage() {
     sessionStorage.setItem('currentStaff', JSON.stringify({
       name: staffName,
       grade: grade,
-      date: new Date().toISOString().split('T')[0]
+      date: getTodayKST()  // 한국 시간 기준
     }))
 
     // Navigate to home page

@@ -8,6 +8,8 @@ import { fetchTodayStaff, isTemporaryPeriod, type TodayStaff } from '../config/s
 import { exportToClipboard, exportToGoogleSheets, isAppsScriptConfigured, getSheetName, type AbsentStudent } from '../services/googleSheets'
 import { sendAbsentSms, type SmsResult } from '../services/smsService'
 import { usePreAbsences } from '../hooks/usePreAbsences'
+import { getTodayKST } from '../utils/date'
+import { zoneAttendanceService, type ZoneAttendanceData } from '../services/zoneAttendanceService'
 import type { AttendanceRecord } from '../types'
 
 interface ZoneSummary {
@@ -95,7 +97,7 @@ const OPERATING_DATES = Object.keys(DATE_STAFF_SCHEDULE).sort()
 // 날짜별 구역 완료율 동적 생성 (과거 날짜는 100% 완료)
 function generateCompletionRates(): Record<string, Record<string, number>> {
   const rates: Record<string, Record<string, number>> = {}
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayKST()  // 한국 시간 기준
 
   OPERATING_DATES.forEach((dateStr) => {
     if (dateStr < today) {
@@ -252,7 +254,7 @@ export default function AdminDashboard() {
   const [date, setDate] = useState(() => {
     // 세션에 저장된 날짜가 있으면 그걸 사용
     const savedDate = sessionStorage.getItem('adminSelectedDate')
-    return savedDate || new Date().toISOString().split('T')[0]
+    return savedDate || getTodayKST()  // 한국 시간 기준
   })
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null)
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
@@ -277,6 +279,63 @@ export default function AdminDashboard() {
   // 스프레드시트에서 사전결석/외박 데이터 로드
   const { getPreAbsenceInfo } = usePreAbsences()
 
+  // Supabase에서 출결 데이터 로드
+  const [supabaseData, setSupabaseData] = useState<Map<string, Map<string, AttendanceRecord>>>(new Map())
+  const [supabaseRecorders, setSupabaseRecorders] = useState<Map<string, string>>(new Map())
+
+  // Supabase 데이터 로드 및 실시간 구독
+  useEffect(() => {
+    const loadSupabaseData = async () => {
+      try {
+        const allData = await zoneAttendanceService.getAllByDate(date)
+        console.log('[AdminDashboard] Supabase data loaded:', allData.length, 'zones')
+
+        const dataMap = new Map<string, Map<string, AttendanceRecord>>()
+        const recordersMap = new Map<string, string>()
+
+        allData.forEach((zoneData: ZoneAttendanceData) => {
+          if (zoneData.data && Array.isArray(zoneData.data)) {
+            dataMap.set(zoneData.zone_id, new Map(zoneData.data))
+          }
+          if (zoneData.recorded_by) {
+            recordersMap.set(zoneData.zone_id, zoneData.recorded_by)
+          }
+        })
+
+        setSupabaseData(dataMap)
+        setSupabaseRecorders(recordersMap)
+      } catch (err) {
+        console.error('[AdminDashboard] Supabase load error:', err)
+      }
+    }
+
+    loadSupabaseData()
+
+    // 실시간 구독
+    const unsubscribe = zoneAttendanceService.subscribeToDate(date, (allData) => {
+      console.log('[AdminDashboard] Realtime update:', allData.length, 'zones')
+
+      const dataMap = new Map<string, Map<string, AttendanceRecord>>()
+      const recordersMap = new Map<string, string>()
+
+      allData.forEach((zoneData: ZoneAttendanceData) => {
+        if (zoneData.data && Array.isArray(zoneData.data)) {
+          dataMap.set(zoneData.zone_id, new Map(zoneData.data))
+        }
+        if (zoneData.recorded_by) {
+          recordersMap.set(zoneData.zone_id, zoneData.recorded_by)
+        }
+      })
+
+      setSupabaseData(dataMap)
+      setSupabaseRecorders(recordersMap)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [date])
+
   const handleSearch = (query: string) => {
     setSearchQuery(query)
     if (query.length >= 1) {
@@ -288,15 +347,21 @@ export default function AdminDashboard() {
     }
   }
 
-  // 선택된 날짜의 출결 데이터 (localStorage 우선, 없으면 샘플 데이터 사용)
+  // 선택된 날짜의 출결 데이터 (Supabase 우선 → localStorage → 샘플 데이터)
   const selectedDateData = useMemo(() => {
     try {
-      const todayKey = new Date().toISOString().split('T')[0]
+      const todayKey = getTodayKST()  // 한국 시간 기준
       const result = new Map<string, Map<string, AttendanceRecord>>()
 
       ZONES.forEach((zone) => {
         try {
-          // 오늘 날짜인 경우 localStorage에서 실제 데이터 읽기
+          // 1. Supabase 데이터 우선 사용 (실시간 동기화)
+          if (supabaseData.has(zone.id)) {
+            result.set(zone.id, supabaseData.get(zone.id) || new Map())
+            return
+          }
+
+          // 2. 오늘 날짜인 경우 localStorage에서 실제 데이터 읽기
           if (date === todayKey) {
             // 먼저 저장된 데이터 확인
             const savedData = localStorage.getItem(`attendance_saved_${zone.id}_${date}`)
@@ -329,7 +394,7 @@ export default function AdminDashboard() {
             }
           }
 
-          // localStorage에 데이터가 없으면 샘플 데이터 사용
+          // 3. localStorage에 데이터가 없으면 샘플 데이터 사용
           const sampleData = ALL_SAMPLE_DATA[date]
           if (sampleData && sampleData.get) {
             result.set(zone.id, sampleData.get(zone.id) || new Map())
@@ -347,12 +412,12 @@ export default function AdminDashboard() {
       console.error('selectedDateData 계산 오류:', e)
       return new Map<string, Map<string, AttendanceRecord>>()
     }
-  }, [date])
+  }, [date, supabaseData])
 
   // 실제 임시저장 구역 판별 (오늘 날짜인 경우 localStorage 확인)
   const selectedDateTempZones = useMemo(() => {
     try {
-      const todayKey = new Date().toISOString().split('T')[0]
+      const todayKey = getTodayKST()  // 한국 시간 기준
 
       if (date === todayKey) {
         const tempZones: string[] = []
@@ -376,19 +441,26 @@ export default function AdminDashboard() {
     }
   }, [date])
 
-  // 기록자 정보 (오늘 날짜인 경우 localStorage에서 실제 기록자 읽기)
+  // 기록자 정보 (Supabase 우선 → localStorage → 샘플 데이터)
   const selectedDateRecorders = useMemo(() => {
     try {
-      const todayKey = new Date().toISOString().split('T')[0]
+      const todayKey = getTodayKST()  // 한국 시간 기준
       const recorders = getZoneRecordersForDate(date) || {}
 
-      // 오늘 날짜인 경우 localStorage에서 실제 기록자 덮어쓰기
+      // Supabase 기록자 정보 우선 사용
+      supabaseRecorders.forEach((recorder, zoneId) => {
+        recorders[zoneId] = recorder
+      })
+
+      // 오늘 날짜인 경우 localStorage에서 실제 기록자 덮어쓰기 (Supabase에 없는 경우)
       if (date === todayKey) {
         ZONES.forEach((zone) => {
           try {
-            const savedRecorder = localStorage.getItem(`attendance_recorder_${zone.id}_${date}`)
-            if (savedRecorder) {
-              recorders[zone.id] = savedRecorder
+            if (!supabaseRecorders.has(zone.id)) {
+              const savedRecorder = localStorage.getItem(`attendance_recorder_${zone.id}_${date}`)
+              if (savedRecorder) {
+                recorders[zone.id] = savedRecorder
+              }
             }
           } catch {
             // ignore
@@ -400,7 +472,7 @@ export default function AdminDashboard() {
     } catch {
       return {}
     }
-  }, [date])
+  }, [date, supabaseRecorders])
 
   // 검색 결과에 출결 상태 추가
   const getAttendanceStatus = (seatId: string, zoneId: string): 'present' | 'absent' | 'unchecked' => {
