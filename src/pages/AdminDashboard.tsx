@@ -1664,14 +1664,11 @@ ${month}월 ${day}일(${weekday}) 겨울방학 방과후학교 조간면학 출�
                       console.error('클립보드 복사 실패')
                     }
 
-                    // Discord 전송
+                    // Discord 전송 (Apps Script 경유 - 시트 캡쳐 포함)
                     setIsSendingDiscord(true)
                     try {
                       await sendDiscordReport({
-                        date,
                         sheetName: getSheetName(date),
-                        grade1Count: absentStudentsForExport.filter(s => s.grade === 1).length,
-                        grade2Count: absentStudentsForExport.filter(s => s.grade === 2).length,
                         message: reportMessage
                       })
                       setExportMessage('✅ Discord 전송 완료! 메시지가 클립보드에 복사되었습니다.')
