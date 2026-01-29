@@ -5,7 +5,6 @@ import { getTodayKST } from '../utils/date'
 
 type Step = 'guide' | 'staff-select'
 
-// 전체 담당자 목록
 const ALL_STAFF = [
   '김종규', '이건우', '조민경', '노예원', '이예진',
   '홍선영', '장보경', '김솔', '홍승민', '조현정',
@@ -21,7 +20,6 @@ export default function LandingPage() {
   const [selectedGrade, setSelectedGrade] = useState<1 | 2 | null>(null)
   const [showOtherStaff, setShowOtherStaff] = useState(false)
 
-  // Get today's date in Korean format
   const today = new Date().toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: 'long',
@@ -40,14 +38,12 @@ export default function LandingPage() {
   }, [])
 
   const handleStaffSelect = (staffName: string, grade: number) => {
-    // Store selected staff in sessionStorage
     sessionStorage.setItem('currentStaff', JSON.stringify({
       name: staffName,
       grade: grade,
-      date: getTodayKST()  // 한국 시간 기준
+      date: getTodayKST()
     }))
 
-    // Navigate to home page
     navigate('/')
   }
 
@@ -55,7 +51,6 @@ export default function LandingPage() {
     return grade === 1 ? todayStaff.grade1 : todayStaff.grade2
   }
 
-  // Guide screen
   if (step === 'guide') {
     return (
       <div className="min-h-screen bg-white p-5">
@@ -65,7 +60,6 @@ export default function LandingPage() {
           </h1>
           <p className="text-center text-gray-500 mb-6">{today}</p>
 
-          {/* Main guide */}
           <div className="bg-gray-50 p-5 rounded-xl mb-5">
             <h2 className="text-red-600 font-bold text-lg mb-4">출결 체크 방법</h2>
 
@@ -117,14 +111,12 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Time info */}
           <div className="bg-blue-50 p-4 rounded-xl mb-5 border border-blue-200">
             <p className="text-center text-blue-800 font-semibold">
               출결 체크 시간: 08:30 ~ 08:50 (20분)
             </p>
           </div>
 
-          {/* Confirm checkbox */}
           <div className="bg-green-50 p-4 rounded-xl mb-5 border border-green-200">
             <label className="flex items-center cursor-pointer">
               <input
@@ -139,7 +131,6 @@ export default function LandingPage() {
             </label>
           </div>
 
-          {/* Next button */}
           <button
             onClick={() => setStep('staff-select')}
             disabled={!confirmed}
@@ -156,7 +147,6 @@ export default function LandingPage() {
     )
   }
 
-  // Staff selection screen
   return (
     <div className="min-h-screen bg-white p-5">
       <div className="max-w-2xl mx-auto">
@@ -171,7 +161,6 @@ export default function LandingPage() {
           </div>
         ) : (
           <>
-            {/* Grade selection */}
             {!selectedGrade && (
               <div className="mb-6">
                 <p className="text-center text-gray-700 mb-4 font-semibold">
@@ -210,7 +199,6 @@ export default function LandingPage() {
               </div>
             )}
 
-            {/* Staff selection for chosen grade */}
             {selectedGrade && (
               <div>
                 <button
@@ -246,7 +234,6 @@ export default function LandingPage() {
                     </p>
                   )}
 
-                  {/* 그 외 버튼 */}
                   <button
                     onClick={() => setShowOtherStaff(!showOtherStaff)}
                     className="w-full py-4 rounded-xl font-semibold text-lg transition-all
@@ -255,7 +242,6 @@ export default function LandingPage() {
                     {showOtherStaff ? '접기 ▲' : '그 외 ▼'}
                   </button>
 
-                  {/* 그 외 담당자 목록 */}
                   {showOtherStaff && (
                     <div className="flex flex-wrap gap-2 p-4 bg-gray-50 rounded-xl">
                       {ALL_STAFF
@@ -282,7 +268,6 @@ export default function LandingPage() {
               </div>
             )}
 
-            {/* No staff registered - show full staff list */}
             {!todayStaff.grade1 && !todayStaff.grade2 && !selectedGrade && (
               <div className="text-center">
                 <p className="text-gray-500 mb-4">
@@ -308,7 +293,6 @@ export default function LandingPage() {
               </div>
             )}
 
-            {/* No registered staff but grade selected - show all staff */}
             {!todayStaff.grade1 && !todayStaff.grade2 && selectedGrade && (
               <div>
                 <button

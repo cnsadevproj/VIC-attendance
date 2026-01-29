@@ -1,23 +1,12 @@
-// 실제 학생 데이터 (267명)
-// 1학년: 121명 (4층 4A, 4B, 4C, 4D)
-// 2학년: 146명 (3층 3A, 3B, 3C, 3D)
-
 import { SEAT_LAYOUTS } from './seatLayouts'
-import { PRE_ABSENCES } from './preAbsences'
 
 export interface Student {
-  studentId: string  // 5자리 학번
+  studentId: string
   name: string
   seatId: string
-  residenceType: 'commute' | 'dormitory'  // 통학 | 기숙
-  preAbsence?: {
-    reason: string
-    startDate: string
-    endDate: string
-  }
+  residenceType: 'commute' | 'dormitory'
 }
 
-// 1학년 학생 목록 (121명) - 확정 좌석배치
 type ResidenceType = 'commute' | 'dormitory'
 const GRADE1_STUDENTS: { studentId: string; name: string; seatId: string; residenceType: ResidenceType }[] = [
   { studentId: '10101', name: '강민재', seatId: '4D028', residenceType: 'commute' },
@@ -119,7 +108,6 @@ const GRADE1_STUDENTS: { studentId: string; name: string; seatId: string; reside
   { studentId: '11115', name: '안서연', seatId: '4A030', residenceType: 'commute' },
   { studentId: '11117', name: '왕영서', seatId: '4A047', residenceType: 'commute' },
   { studentId: '11122', name: '이채원', seatId: '4A025', residenceType: 'commute' },
-  // { studentId: '11125', name: '전서희', seatId: '4A036' } - 제거됨 (2026-01-07)
   { studentId: '11201', name: '강빛나', seatId: '4A121', residenceType: 'dormitory' },
   { studentId: '11202', name: '강서진', seatId: '4D087', residenceType: 'dormitory' },
   { studentId: '11203', name: '강태준', seatId: '4D084', residenceType: 'dormitory' },
@@ -144,7 +132,6 @@ const GRADE1_STUDENTS: { studentId: string; name: string; seatId: string; reside
   { studentId: '11232', name: '허지윤', seatId: '4A092', residenceType: 'dormitory' },
 ]
 
-// 2학년 학생 목록 (확정 좌석배치 - 최종)
 const GRADE2_STUDENTS: { studentId: string; name: string; seatId: string; residenceType: ResidenceType }[] = [
   { studentId: '20104', name: '김민서', seatId: '3D091', residenceType: 'dormitory' },
   { studentId: '20105', name: '김성윤', seatId: '3D055', residenceType: 'commute' },
@@ -294,7 +281,6 @@ const GRADE2_STUDENTS: { studentId: string; name: string; seatId: string; reside
   { studentId: '21224', name: '홍예빈', seatId: '3A139', residenceType: 'commute' },
 ]
 
-// 구역에서 모든 좌석 ID 추출 (숫자 순으로 정렬)
 function getAllSeatIds(zoneId: string): string[] {
   const layout = SEAT_LAYOUTS[zoneId]
   if (!layout) return []
@@ -309,7 +295,6 @@ function getAllSeatIds(zoneId: string): string[] {
     })
   })
 
-  // 좌석 번호 순으로 정렬 (4A001, 4A002, ...)
   return seatIds.sort((a, b) => {
     const numA = parseInt(a.replace(/\D/g, ''))
     const numB = parseInt(b.replace(/\D/g, ''))
@@ -317,11 +302,9 @@ function getAllSeatIds(zoneId: string): string[] {
   })
 }
 
-// 학생을 좌석에 배치 (미배치 좌석은 null)
 function assignStudentsToSeats(): Map<string, Student | null> {
   const studentMap = new Map<string, Student | null>()
 
-  // 모든 구역의 좌석을 먼저 null로 초기화
   const allZones = ['4A', '4B', '4C', '4D', '3A', '3B', '3C', '3D', 'C407', 'C409', 'C306', 'C307', 'C309']
   allZones.forEach((zoneId) => {
     const seatIds = getAllSeatIds(zoneId)
@@ -330,42 +313,33 @@ function assignStudentsToSeats(): Map<string, Student | null> {
     })
   })
 
-  // 1학년 학생 배치 (확정된 좌석 사용)
   GRADE1_STUDENTS.forEach((studentData) => {
-    const preAbsence = PRE_ABSENCES[studentData.studentId]
     studentMap.set(studentData.seatId, {
       studentId: studentData.studentId,
       name: studentData.name,
       seatId: studentData.seatId,
       residenceType: studentData.residenceType,
-      ...(preAbsence && { preAbsence }),
     })
   })
 
-  // 2학년 학생 배치 (확정된 좌석 사용)
   GRADE2_STUDENTS.forEach((studentData) => {
-    const preAbsence = PRE_ABSENCES[studentData.studentId]
     studentMap.set(studentData.seatId, {
       studentId: studentData.studentId,
       name: studentData.name,
       seatId: studentData.seatId,
       residenceType: studentData.residenceType,
-      ...(preAbsence && { preAbsence }),
     })
   })
 
   return studentMap
 }
 
-// 학생 데이터 (고정)
 export const STUDENTS = assignStudentsToSeats()
 
-// 좌석 ID로 학생 찾기 (null이면 미배치)
 export function getStudentBySeatId(seatId: string): Student | null {
   return STUDENTS.get(seatId) ?? null
 }
 
-// 학생 이름으로 검색
 export interface StudentSearchResult {
   student: Student
   zoneId: string
@@ -405,7 +379,6 @@ export function searchStudentByName(name: string): StudentSearchResult[] {
   return results
 }
 
-// 학번으로 학생 찾기
 export function getStudentByStudentId(studentId: string): Student | null {
   for (const student of STUDENTS.values()) {
     if (student && student.studentId === studentId) {
@@ -415,7 +388,6 @@ export function getStudentByStudentId(studentId: string): Student | null {
   return null
 }
 
-// 구역별 배정된 학생 수 반환
 export function getStudentCountByZone(zoneId: string): number {
   const seatIds = getAllSeatIds(zoneId)
   let count = 0
@@ -425,7 +397,6 @@ export function getStudentCountByZone(zoneId: string): number {
   return count
 }
 
-// 전체 학생 목록 (배정된 학생만)
 export function getAllStudents(): Student[] {
   const students: Student[] = []
   STUDENTS.forEach((student) => {
@@ -434,7 +405,6 @@ export function getAllStudents(): Student[] {
   return students
 }
 
-// 학년별 학생 목록
 export function getStudentsByGrade(grade: 1 | 2): Student[] {
   const prefix = grade === 1 ? '4' : '3'
   const students: Student[] = []
@@ -446,6 +416,5 @@ export function getStudentsByGrade(grade: 1 | 2): Student[] {
   return students
 }
 
-// MockStudent 타입 호환성을 위한 alias
 export type MockStudent = Student
 export const MOCK_STUDENTS = STUDENTS

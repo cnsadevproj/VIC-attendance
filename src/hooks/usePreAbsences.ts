@@ -1,5 +1,3 @@
-// 스프레드시트에서 사전결석/외박 데이터를 로드하는 훅
-
 import { useState, useEffect, useCallback } from 'react'
 import { fetchAbsenceData, refreshCache, type AbsenceEntry } from '../services/absenceService'
 
@@ -47,7 +45,6 @@ export function usePreAbsences(): UsePreAbsencesResult {
     await loadData()
   }, [loadData])
 
-  // 특정 날짜에 사전결석/외박인지 확인
   const isPreAbsentOnDate = useCallback((studentId: string, dateStr: string): boolean => {
     return entries.some(entry =>
       entry.studentId === studentId &&
@@ -56,16 +53,16 @@ export function usePreAbsences(): UsePreAbsencesResult {
     )
   }, [entries])
 
-  // 특정 학생의 사전결석 정보 가져오기
   const getPreAbsenceInfo = useCallback((studentId: string, dateStr: string) => {
-    const entry = entries.find(e =>
+    const matchingEntries = entries.filter(e =>
       e.studentId === studentId &&
       dateStr >= e.startDate &&
       dateStr <= e.endDate
     )
-    if (!entry) return null
+    if (matchingEntries.length === 0) return null
+    const entry = matchingEntries[matchingEntries.length - 1]
     return {
-      reason: entry.reason || '',  // 순수 사유만 반환
+      reason: entry.reason || '',
       type: entry.type,
       startDate: entry.startDate,
       endDate: entry.endDate

@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Header from '../components/layout/Header'
 import SeatMap from '../components/seatmap/SeatMap'
 import PinchZoomContainer from '../components/PinchZoomContainer'
@@ -23,7 +23,6 @@ interface StudentModalData {
   note: string
 }
 
-// 학생 특이사항 저장/불러오기 함수
 function getStudentNote(seatId: string, dateKey: string): string {
   const notes = localStorage.getItem(`student_notes_${dateKey}`)
   if (notes) {
@@ -84,6 +83,7 @@ export default function AttendancePage() {
   const viewData = locationState?.viewData
   const [attendanceRecords, setAttendanceRecords] = useState<Map<string, AttendanceRecord>>(new Map())
   const [hasChanges, setHasChanges] = useState(false)
+  const hasChangesRef = useRef(false)
   const [isSaving, setIsSaving] = useState(false)
   const [currentStaff, setCurrentStaff] = useState<CurrentStaff | null>(null)
   const [studentModal, setStudentModal] = useState<StudentModalData | null>(null)
@@ -95,18 +95,14 @@ export default function AttendancePage() {
   const [supabaseRecordedBy, setSupabaseRecordedBy] = useState<string | null>(null)
   const [isLoadingSupabase, setIsLoadingSupabase] = useState(true)
 
-  // 스프레드시트에서 사전결석/외박 데이터 로드
   const { entries: preAbsenceEntries, getPreAbsenceInfo, isLoading: preAbsenceLoading } = usePreAbsences()
 
-  // 오늘 날짜 키 (한국 시간 기준)
   const todayKey = getTodayKST()
   const dateKey = viewDate || todayKey
 
-  // localStorage 키
   const getTempSaveKey = () => `attendance_temp_${zoneId}_${todayKey}`
   const getSavedKey = () => `attendance_saved_${zoneId}_${todayKey}`
 
-  // 배정된 좌석 목록 계산
   const assignedSeats = useMemo(() => {
     const layout = SEAT_LAYOUTS[zoneId || '']
     if (!layout) return []
@@ -127,28 +123,23 @@ export default function AttendancePage() {
     return seats
   }, [zoneId])
 
-  // Get current staff from sessionStorage
   useEffect(() => {
     const staffData = sessionStorage.getItem('currentStaff')
     if (staffData) {
       const staff = JSON.parse(staffData) as CurrentStaff
-      const today = new Date().toISOString().split('T')[0]
-      if (staff.date === today) {
+      if (staff.date === todayKey) {
         setCurrentStaff(staff)
       }
     }
-  }, [])
+  }, [todayKey])
 
-  // 학생 특이사항 불러오기
   useEffect(() => {
     setStudentNotes(getAllStudentNotes(dateKey))
   }, [dateKey])
 
-  // Supabase에서 데이터 로드 및 실시간 구독
   useEffect(() => {
     if (!zoneId) return
 
-    // 관리자에서 특정 날짜 데이터를 보러 온 경우 - Supabase에서 notes도 로드
     if (fromAdmin && viewDate && viewData) {
       const loadAdminView = async () => {
         try {
@@ -156,9 +147,9 @@ export default function AttendancePage() {
           setAttendanceRecords(restoredRecords)
           setHasTempSave(false)
           setHasChanges(false)
+          hasChangesRef.current = false
           setPreAbsenceProcessed(true)
 
-          // Supabase에서 notes 로드
           const supabaseData = await zoneAttendanceService.get(zoneId, viewDate)
           if (supabaseData?.notes) {
             setStudentNotes(supabaseData.notes)
@@ -176,7 +167,6 @@ export default function AttendancePage() {
     const loadData = async () => {
       setIsLoadingSupabase(true)
 
-      // 1. 먼저 내 임시저장 데이터 확인 (작업 중이던 것)
       const tempData = localStorage.getItem(getTempSaveKey())
       if (tempData) {
         try {
@@ -185,6 +175,7 @@ export default function AttendancePage() {
           setAttendanceRecords(restoredRecords)
           setHasTempSave(true)
           setHasChanges(true)
+          hasChangesRef.current = true
           setPreAbsenceProcessed(true)
           setIsLoadingSupabase(false)
           console.log('[AttendancePage] Restored from temp save')
@@ -194,7 +185,6 @@ export default function AttendancePage() {
         }
       }
 
-      // 2. Supabase에서 데이터 확인 (다른 담당자가 저장한 것 포함)
       try {
         const supabaseData = await zoneAttendanceService.get(zoneId, todayKey)
         if (supabaseData) {
@@ -204,17 +194,19 @@ export default function AttendancePage() {
           setSupabaseRecordedBy(supabaseData.recorded_by || null)
           setHasTempSave(false)
           setHasChanges(false)
+          hasChangesRef.current = false
           setPreAbsenceProcessed(true)
 
-          // Supabase 특이사항도 로드
           if (supabaseData.notes) {
             setStudentNotes(supabaseData.notes)
           }
 
-          // localStorage에도 백업
           localStorage.setItem(`attendance_saved_${zoneId}_${todayKey}`, JSON.stringify(Array.from(records.entries())))
           if (supabaseData.recorded_by) {
             localStorage.setItem(`attendance_recorder_${zoneId}_${todayKey}`, supabaseData.recorded_by)
+          }
+          if (supabaseData.updated_at) {
+            localStorage.setItem(`attendance_saved_time_${zoneId}_${todayKey}`, supabaseData.updated_at)
           }
 
           setIsLoadingSupabase(false)
@@ -224,7 +216,6 @@ export default function AttendancePage() {
         console.error('[AttendancePage] Supabase load error:', err)
       }
 
-      // 3. Supabase 실패 시 localStorage 확인
       const savedDataKey = `attendance_saved_${zoneId}_${todayKey}`
       const savedData = localStorage.getItem(savedDataKey)
       if (savedData) {
@@ -236,6 +227,7 @@ export default function AttendancePage() {
           setSupabaseRecordedBy(recorder)
           setHasTempSave(false)
           setHasChanges(false)
+          hasChangesRef.current = false
           setPreAbsenceProcessed(true)
           setIsLoadingSupabase(false)
           return
@@ -244,19 +236,15 @@ export default function AttendancePage() {
         }
       }
 
-      // 4. 아무 데이터도 없으면 사전결석 처리 대기
       setPreAbsenceProcessed(false)
       setIsLoadingSupabase(false)
     }
 
     loadData()
 
-    // 실시간 구독 설정
     const unsubscribe = zoneAttendanceService.subscribeToDate(todayKey, (allZoneData) => {
-      // 현재 구역의 데이터만 확인
       const myZoneData = allZoneData.find(d => d.zone_id === zoneId)
-      if (myZoneData && !hasChanges) {
-        // 내가 수정 중이 아닐 때만 업데이트
+      if (myZoneData && !hasChangesRef.current) {
         console.log('[AttendancePage] Realtime update for zone:', zoneId)
         const records = new Map<string, AttendanceRecord>(myZoneData.data)
         setAttendanceRecords(records)
@@ -270,20 +258,16 @@ export default function AttendancePage() {
     return () => {
       unsubscribe()
     }
-  }, [zoneId, todayKey, fromAdmin, viewDate, viewData, hasChanges])
+  }, [zoneId, todayKey, fromAdmin, viewDate, viewData])
 
-  // 사전 결석 학생 자동 결석 처리 (스프레드시트 데이터 로드 후)
   useEffect(() => {
-    // 이미 처리됨, 로딩 중, 또는 조회 모드면 스킵
     if (preAbsenceProcessed || preAbsenceLoading || viewDate) return
 
-    // 로딩 완료 후 직접 entries를 사용하여 사전결석 학생 체크
     const preAbsenceRecords = new Map<string, AttendanceRecord>()
     assignedSeats.forEach((seatId) => {
       const student = getStudentBySeatId(seatId)
       if (!student) return
 
-      // 오늘 날짜에 사전결석인지 직접 entries에서 확인
       const hasPreAbsence = preAbsenceEntries.some(entry =>
         entry.studentId === student.studentId &&
         todayKey >= entry.startDate &&
@@ -303,11 +287,11 @@ export default function AttendancePage() {
     if (preAbsenceRecords.size > 0) {
       setAttendanceRecords(preAbsenceRecords)
       setHasChanges(true)
+      hasChangesRef.current = true
     }
     setPreAbsenceProcessed(true)
   }, [preAbsenceProcessed, preAbsenceLoading, preAbsenceEntries, viewDate, assignedSeats, todayKey, currentStaff])
 
-  // Get display date in Korean format (viewDate when from admin, otherwise today)
   const displayDate = useMemo(() => {
     const dateToShow = viewDate ? new Date(viewDate + 'T00:00:00') : new Date()
     return dateToShow.toLocaleDateString('ko-KR', {
@@ -319,21 +303,18 @@ export default function AttendancePage() {
   }, [viewDate])
 
   const handleSeatClick = (seatId: string) => {
-    // 조회 모드에서는 클릭해도 변경 불가
     if (viewDate) return
 
     setAttendanceRecords((prev) => {
       const newRecords = new Map(prev)
       const current = newRecords.get(seatId)
 
-      // 출석 → 결석 → 미체크 순환
       let newStatus: 'present' | 'absent' | 'unchecked'
       if (!current || current.status === 'unchecked') {
         newStatus = 'present'
       } else if (current.status === 'present') {
         newStatus = 'absent'
       } else {
-        // 결석 상태에서 다시 누르면 미체크로 (기록 삭제)
         newRecords.delete(seatId)
         return newRecords
       }
@@ -348,13 +329,13 @@ export default function AttendancePage() {
       return newRecords
     })
     setHasChanges(true)
+    hasChangesRef.current = true
   }
 
   const handleSeatLongPress = (seatId: string) => {
     const student = getStudentBySeatId(seatId)
     if (student) {
       const note = getStudentNote(seatId, dateKey)
-      // 현재 날짜에 사전결석/외박인 경우 정보 가져오기
       const info = getPreAbsenceInfo(student.studentId, dateKey)
       setStudentModal({
         studentName: student.name,
@@ -376,7 +357,6 @@ export default function AttendancePage() {
     }
   }
 
-  // 임시저장
   const handleTempSave = () => {
     const dataToSave = Array.from(attendanceRecords.entries())
     localStorage.setItem(getTempSaveKey(), JSON.stringify(dataToSave))
@@ -387,12 +367,10 @@ export default function AttendancePage() {
     })
   }
 
-  // 실제 저장 실행
   const executeSave = async () => {
     setIsSaving(true)
 
     try {
-      // Supabase에 저장 (실시간 동기화)
       await zoneAttendanceService.save(
         zoneId || '',
         todayKey,
@@ -403,23 +381,19 @@ export default function AttendancePage() {
       console.log('[AttendancePage] Saved to Supabase')
     } catch (err) {
       console.error('[AttendancePage] Supabase save error:', err)
-      // Supabase 저장 실패해도 localStorage에는 저장
     }
 
-    // localStorage에도 백업 저장
     const dataToSave = Array.from(attendanceRecords.entries())
     localStorage.setItem(getSavedKey(), JSON.stringify(dataToSave))
-    // 저장 시간 기록
     localStorage.setItem(`attendance_saved_time_${zoneId}_${todayKey}`, new Date().toISOString())
-    // 기록자 이름 저장
     if (currentStaff?.name) {
       localStorage.setItem(`attendance_recorder_${zoneId}_${todayKey}`, currentStaff.name)
     }
-    // 임시저장 데이터 삭제
     localStorage.removeItem(getTempSaveKey())
 
     setIsSaving(false)
     setHasChanges(false)
+    hasChangesRef.current = false
     setHasTempSave(false)
     setAlertModal({
       title: '저장 완료',
@@ -428,7 +402,6 @@ export default function AttendancePage() {
   }
 
   const handleSave = async () => {
-    // 미체크 학생 확인
     if (summary.unchecked > 0) {
       setAlertModal({
         title: '저장 불가',
@@ -437,15 +410,21 @@ export default function AttendancePage() {
       return
     }
 
-    // 이미 오늘 저장된 기록이 있는지 확인
     const savedTimeStr = localStorage.getItem(`attendance_saved_time_${zoneId}_${todayKey}`)
     const hasSavedData = localStorage.getItem(getSavedKey())
-    if (hasSavedData && savedTimeStr) {
-      const savedDate = new Date(savedTimeStr)
-      const timeStr = savedDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+
+    if ((hasSavedData && savedTimeStr) || supabaseRecordedBy) {
+      let timeStr = ''
+      if (savedTimeStr) {
+        const savedDate = new Date(savedTimeStr)
+        timeStr = savedDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+      }
+      const recorderInfo = supabaseRecordedBy ? ` (${supabaseRecordedBy} 님이 기록)` : ''
       setAlertModal({
         title: '덮어쓰기 확인',
-        message: `오늘 ${timeStr}에 이미 저장된 기록이 있습니다.\n덮어쓰시겠습니까?`,
+        message: timeStr
+          ? `오늘 ${timeStr}에 이미 저장된 기록이 있습니다.${recorderInfo}\n덮어쓰시겠습니까?`
+          : `이미 저장된 기록이 있습니다.${recorderInfo}\n덮어쓰시겠습니까?`,
         onConfirm: executeSave,
       })
       return
@@ -455,7 +434,7 @@ export default function AttendancePage() {
   }
 
   const handleMarkAllPresent = () => {
-    if (viewDate) return // 조회 모드에서는 변경 불가
+    if (viewDate) return
 
     const layout = SEAT_LAYOUTS[zoneId || '']
     if (!layout) return
@@ -468,7 +447,6 @@ export default function AttendancePage() {
       row.forEach((cell) => {
         if (cell !== 'sp' && cell !== 'empty' && cell !== 'br') {
           const seatId = cell as string
-          // Only mark assigned seats as present
           const student = getStudentBySeatId(seatId)
           if (student) {
             newRecords.set(seatId, {
@@ -484,10 +462,11 @@ export default function AttendancePage() {
 
     setAttendanceRecords(newRecords)
     setHasChanges(true)
+    hasChangesRef.current = true
   }
 
   const handleMarkAllAbsent = () => {
-    if (viewDate) return // 조회 모드에서는 변경 불가
+    if (viewDate) return
 
     const layout = SEAT_LAYOUTS[zoneId || '']
     if (!layout) return
@@ -500,7 +479,6 @@ export default function AttendancePage() {
       row.forEach((cell) => {
         if (cell !== 'sp' && cell !== 'empty' && cell !== 'br') {
           const seatId = cell as string
-          // Only mark assigned seats as absent
           const student = getStudentBySeatId(seatId)
           if (student) {
             newRecords.set(seatId, {
@@ -516,14 +494,13 @@ export default function AttendancePage() {
 
     setAttendanceRecords(newRecords)
     setHasChanges(true)
+    hasChangesRef.current = true
   }
 
-  // Calculate summary (배정된 학생만 카운트)
   const summary = useMemo(() => {
     let present = 0
     let absent = 0
 
-    // 배정된 좌석에 대해서만 출결 카운트
     assignedSeats.forEach((seatId) => {
       const record = attendanceRecords.get(seatId)
       if (record) {
@@ -545,7 +522,6 @@ export default function AttendancePage() {
         onBack={() => navigate(fromAdmin ? '/admin' : '/')}
       />
 
-      {/* Date, summary and staff display */}
       <div className={`border-b px-4 py-3 ${viewDate ? 'bg-purple-50' : 'bg-white'}`}>
         <div className="flex justify-between items-center">
           <div>
@@ -555,7 +531,6 @@ export default function AttendancePage() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            {/* Summary counts */}
             <div className="flex items-center gap-2 text-sm">
               <span className="text-green-600 font-medium">출석 {summary.present}</span>
               <span className="text-gray-300">|</span>
@@ -563,7 +538,6 @@ export default function AttendancePage() {
               <span className="text-gray-300">|</span>
               <span className="text-gray-500 font-medium">미체크 {summary.unchecked}</span>
             </div>
-            {/* Staff info */}
             {fromAdmin && adminRecordedBy ? (
               <span className="text-sm bg-purple-100 text-purple-700 px-3 py-1 rounded-full">
                 기록자: {adminRecordedBy}
@@ -585,7 +559,6 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {/* Action buttons - 조회 모드에서는 숨김 */}
       {!viewDate && (
         <div className="bg-white border-b px-4 py-3">
           <div className="flex gap-2">
@@ -625,7 +598,6 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Seat map */}
       <div className="flex-1 overflow-hidden p-4">
         {isLoadingSupabase ? (
           <div className="flex items-center justify-center h-full">
@@ -652,7 +624,6 @@ export default function AttendancePage() {
         )}
       </div>
 
-      {/* 알림 모달 */}
       {alertModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-xl">
@@ -695,7 +666,6 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* 학생 정보 모달 */}
       {studentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-xl">
@@ -703,7 +673,6 @@ export default function AttendancePage() {
               <h2 className="text-xl font-bold">학생 정보</h2>
             </div>
             <div className="p-5 space-y-4">
-              {/* 학생 기본 정보 */}
               <div>
                 <div className="text-gray-500 text-sm">학생 정보</div>
                 <div className="font-bold text-lg">
@@ -712,7 +681,6 @@ export default function AttendancePage() {
                 <div className="text-gray-600">좌석: {studentModal.seatId}</div>
               </div>
 
-              {/* 사전 결석/외박 정보 (있는 경우) */}
               {studentModal.preAbsenceInfo && (
                 <div className={`p-4 rounded-xl border-2 ${
                   studentModal.preAbsenceInfo.type === '외박'
@@ -739,7 +707,6 @@ export default function AttendancePage() {
                 </div>
               )}
 
-              {/* 특이사항 입력 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   특이사항

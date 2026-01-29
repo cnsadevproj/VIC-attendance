@@ -15,11 +15,9 @@ export default function PinchZoomContainer({
   const [scale, setScale] = useState(1)
   const [position, setPosition] = useState({ x: 0, y: 0 })
 
-  // Use refs to track current values without causing re-renders
   const scaleRef = useRef(scale)
   const positionRef = useRef(position)
 
-  // Keep refs in sync with state
   useEffect(() => {
     scaleRef.current = scale
   }, [scale])
@@ -28,7 +26,6 @@ export default function PinchZoomContainer({
     positionRef.current = position
   }, [position])
 
-  // Touch state refs
   const touchState = useRef({
     initialDistance: 0,
     initialScale: 1,
@@ -36,17 +33,15 @@ export default function PinchZoomContainer({
     lastTouchCenter: { x: 0, y: 0 },
     isPinching: false,
     isDragging: false,
-    wasPinching: false, // Track if we just finished pinching
+    wasPinching: false,
   })
 
-  // Calculate distance between two touch points
   const getDistance = (touch1: Touch, touch2: Touch) => {
     const dx = touch1.clientX - touch2.clientX
     const dy = touch1.clientY - touch2.clientY
     return Math.sqrt(dx * dx + dy * dy)
   }
 
-  // Calculate center point between two touches
   const getTouchCenter = (touch1: Touch, touch2: Touch) => ({
     x: (touch1.clientX + touch2.clientX) / 2,
     y: (touch1.clientY + touch2.clientY) / 2,
@@ -67,7 +62,6 @@ export default function PinchZoomContainer({
         touchState.current.initialPosition = { ...positionRef.current }
         touchState.current.lastTouchCenter = getTouchCenter(e.touches[0], e.touches[1])
       } else if (e.touches.length === 1 && scaleRef.current > 1) {
-        // Allow panning when zoomed in
         touchState.current.isDragging = true
         touchState.current.lastTouchCenter = {
           x: e.touches[0].clientX,
@@ -84,12 +78,10 @@ export default function PinchZoomContainer({
         const currentDistance = getDistance(e.touches[0], e.touches[1])
         const currentCenter = getTouchCenter(e.touches[0], e.touches[1])
 
-        // Calculate new scale
         const scaleChange = currentDistance / touchState.current.initialDistance
         let newScale = touchState.current.initialScale * scaleChange
         newScale = Math.min(Math.max(newScale, minScale), maxScale)
 
-        // Calculate position adjustment for zoom center
         const dx = currentCenter.x - touchState.current.lastTouchCenter.x
         const dy = currentCenter.y - touchState.current.lastTouchCenter.y
 
@@ -102,7 +94,6 @@ export default function PinchZoomContainer({
         setPosition(newPosition)
         touchState.current.lastTouchCenter = currentCenter
       } else if (e.touches.length === 1 && touchState.current.isDragging && scaleRef.current > 1) {
-        // Pan while zoomed
         e.preventDefault()
 
         const dx = e.touches[0].clientX - touchState.current.lastTouchCenter.x
@@ -125,7 +116,6 @@ export default function PinchZoomContainer({
       if (e.touches.length < 2 && touchState.current.isPinching) {
         touchState.current.isPinching = false
         touchState.current.wasPinching = true
-        // Reset wasPinching after a delay to allow double-tap detection to work again
         setTimeout(() => {
           touchState.current.wasPinching = false
         }, 400)
@@ -133,7 +123,6 @@ export default function PinchZoomContainer({
       if (e.touches.length === 0) {
         touchState.current.isDragging = false
 
-        // Scale이 minScale에 매우 가까우면 1로 리셋 (부드러운 동작)
         if (scaleRef.current <= 1.05) {
           setScale(1)
           setPosition({ x: 0, y: 0 })
@@ -141,7 +130,6 @@ export default function PinchZoomContainer({
       }
     }
 
-    // Add event listeners with passive: false to allow preventDefault
     container.addEventListener('touchstart', handleTouchStart, { passive: false })
     container.addEventListener('touchmove', handleTouchMove, { passive: false })
     container.addEventListener('touchend', handleTouchEnd)
@@ -153,19 +141,16 @@ export default function PinchZoomContainer({
       container.removeEventListener('touchend', handleTouchEnd)
       container.removeEventListener('touchcancel', handleTouchEnd)
     }
-  }, [minScale, maxScale]) // Only depend on props, not state
+  }, [minScale, maxScale])
 
-  // Double tap to reset
   const lastTap = useRef(0)
   const handleDoubleTap = useCallback(() => {
-    // Skip double-tap detection if we just finished pinching
     if (touchState.current.wasPinching) {
       return
     }
 
     const now = Date.now()
     if (now - lastTap.current < 300) {
-      // Double tap detected - toggle zoom
       if (scaleRef.current > 1) {
         setScale(1)
         setPosition({ x: 0, y: 0 })
@@ -191,7 +176,6 @@ export default function PinchZoomContainer({
       >
         {children}
       </div>
-      {/* Zoom indicator */}
       {scale !== 1 && (
         <div className="absolute bottom-4 right-4 bg-black/60 text-white text-xs px-2 py-1 rounded-full pointer-events-none">
           {Math.round(scale * 100)}%

@@ -1,11 +1,9 @@
 export type { Database, AttendanceStatus, UserRole } from './database.types'
 
-// Seat layout cell types
 export type SeatLayoutCell = string | 'sp' | 'empty' | 'br'
 export type SeatLayoutRow = SeatLayoutCell[]
 export type SeatLayout = SeatLayoutRow[]
 
-// Student with seat info
 export interface Student {
   id: string
   studentId: string
@@ -18,7 +16,6 @@ export interface Student {
   parentPhone?: string | null
 }
 
-// Attendance record for UI
 export interface AttendanceRecord {
   studentId: string
   status: 'present' | 'absent' | 'unchecked'
@@ -27,14 +24,12 @@ export interface AttendanceRecord {
   staffName?: string
 }
 
-// Current staff info stored in sessionStorage
 export interface CurrentStaff {
   name: string
   grade: number
   date: string
 }
 
-// Zone config
 export interface Zone {
   id: string
   grade: number
@@ -44,7 +39,6 @@ export interface Zone {
   isActive: boolean
 }
 
-// Time slots
 export type TimeSlot = 'ET' | 'EP1' | 'EP2'
 
 export const TIME_SLOT_LABELS: Record<TimeSlot, string> = {
@@ -53,7 +47,6 @@ export const TIME_SLOT_LABELS: Record<TimeSlot, string> = {
   EP2: 'EP2 (21:10~22:30)',
 }
 
-// Status config
 export const STATUS_CONFIG = {
   present: {
     label: '출석',

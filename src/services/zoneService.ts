@@ -5,7 +5,6 @@ type Zone = Database['public']['Tables']['zones']['Row']
 type ZoneInsert = Database['public']['Tables']['zones']['Insert']
 
 export const zoneService = {
-  // Get all active zones
   async getAll(): Promise<Zone[]> {
     const { data, error } = await supabase
       .from('zones')
@@ -18,7 +17,6 @@ export const zoneService = {
     return data || []
   },
 
-  // Get zones by grade
   async getByGrade(grade: number): Promise<Zone[]> {
     const { data, error } = await supabase
       .from('zones')
@@ -31,7 +29,6 @@ export const zoneService = {
     return data || []
   },
 
-  // Get single zone by ID
   async getById(id: string): Promise<Zone | null> {
     const { data, error } = await supabase
       .from('zones')
@@ -40,13 +37,12 @@ export const zoneService = {
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') return null // Not found
+      if (error.code === 'PGRST116') return null
       throw error
     }
     return data
   },
 
-  // Create new zone (admin only)
   async create(zone: ZoneInsert): Promise<Zone> {
     const { data, error } = await supabase
       .from('zones')
@@ -58,7 +54,6 @@ export const zoneService = {
     return data
   },
 
-  // Update zone (admin only)
   async update(id: string, updates: Partial<Zone>): Promise<Zone> {
     const { data, error } = await supabase
       .from('zones')
@@ -71,7 +66,6 @@ export const zoneService = {
     return data
   },
 
-  // Deactivate zone (soft delete)
   async deactivate(id: string): Promise<void> {
     const { error } = await supabase
       .from('zones')
@@ -81,7 +75,6 @@ export const zoneService = {
     if (error) throw error
   },
 
-  // Get zones grouped by grade
   async getGroupedByGrade(): Promise<Record<number, Zone[]>> {
     const zones = await this.getAll()
     return zones.reduce((acc, zone) => {

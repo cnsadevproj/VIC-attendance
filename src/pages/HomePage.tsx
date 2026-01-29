@@ -7,6 +7,8 @@ import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { isTemporaryPeriod } from '../config/staffSchedule'
 import { getTodayKST } from '../utils/date'
 import { zoneAttendanceService, type ZoneAttendanceData } from '../services/zoneAttendanceService'
+import { usePreAbsences } from '../hooks/usePreAbsences'
+import { noticeService } from '../services/noticeService'
 import type { AttendanceRecord } from '../types'
 
 interface CurrentStaff {
@@ -23,7 +25,6 @@ interface ZoneStatus {
   isComplete: boolean
 }
 
-// Zone configuration based on legacy code
 const GRADES = [
   {
     grade: 1,
@@ -47,13 +48,11 @@ const GRADES = [
   },
 ]
 
-// 구역별 출결 상태 계산
 function getZoneStatus(zoneId: string, todayKey: string): ZoneStatus {
   try {
     const layout = SEAT_LAYOUTS[zoneId]
     if (!layout) return { total: 0, present: 0, absent: 0, unchecked: 0, isComplete: false }
 
-    // 배정된 학생 수 계산
     let totalStudents = 0
     layout.forEach((row) => {
       if (row[0] === 'br') return
@@ -65,7 +64,6 @@ function getZoneStatus(zoneId: string, todayKey: string): ZoneStatus {
       })
     })
 
-    // localStorage에서 출결 데이터 읽기 (저장된 데이터 또는 임시저장)
     let records = new Map<string, AttendanceRecord>()
 
     try {
@@ -85,21 +83,19 @@ function getZoneStatus(zoneId: string, todayKey: string): ZoneStatus {
         }
       }
     } catch {
-      // 파싱 실패 시 빈 Map 사용
       records = new Map()
     }
 
     let present = 0
     let absent = 0
-    // 실제 배정된 학생에 대해서만 출결 카운트
     records.forEach((record, seatId) => {
       const student = getStudentBySeatId(seatId)
-      if (!student) return // 학생이 없는 좌석은 무시
+      if (!student) return
       if (record.status === 'present') present++
       else if (record.status === 'absent') absent++
     })
 
-    const unchecked = Math.max(0, totalStudents - present - absent) // 음수 방지
+    const unchecked = Math.max(0, totalStudents - present - absent)
     const isComplete = unchecked === 0 && totalStudents > 0
 
     return { total: totalStudents, present, absent, unchecked, isComplete }
@@ -118,18 +114,33 @@ export default function HomePage() {
   const [showBugReport, setShowBugReport] = useState(false)
   const [zoneStatuses, setZoneStatuses] = useState<Record<string, ZoneStatus>>({})
 
-  // 오늘 날짜 키 (한국 시간 기준)
+  const { getPreAbsenceInfo } = usePreAbsences()
+
   const todayKey = getTodayKST()
 
-  // 관리자 특이사항 불러오기
   useEffect(() => {
-    const notice = localStorage.getItem(`admin_notice_${todayKey}`)
-    setAdminNotice(notice)
+    const loadNotice = async () => {
+      try {
+        const notice = await noticeService.get(todayKey)
+        setAdminNotice(notice || null)
+      } catch (error) {
+        console.error('[HomePage] Failed to load notice:', error)
+        const localNotice = localStorage.getItem(`admin_notice_${todayKey}`)
+        setAdminNotice(localNotice)
+      }
+    }
+    loadNotice()
+
+    const unsubscribe = noticeService.subscribeToDate(todayKey, (notice) => {
+      setAdminNotice(notice || null)
+    })
+
+    return () => {
+      unsubscribe()
+    }
   }, [todayKey])
 
-  // 구역별 출결 상태 불러오기 (Supabase 실시간 + localStorage 폴백)
   useEffect(() => {
-    // Supabase 데이터로 상태 계산
     const calculateStatusFromData = (
       zoneId: string,
       records: Map<string, AttendanceRecord>
@@ -163,7 +174,6 @@ export default function HomePage() {
       return { total: totalStudents, present, absent, unchecked, isComplete }
     }
 
-    // Supabase 데이터로 상태 업데이트
     const updateFromSupabase = (allData: ZoneAttendanceData[]) => {
       const statuses: Record<string, ZoneStatus> = {}
 
@@ -174,7 +184,6 @@ export default function HomePage() {
             const records = new Map<string, AttendanceRecord>(zoneData.data)
             statuses[zone.id] = calculateStatusFromData(zone.id, records)
           } else {
-            // Supabase에 없으면 localStorage 폴백
             statuses[zone.id] = getZoneStatus(zone.id, todayKey)
           }
         })
@@ -183,7 +192,6 @@ export default function HomePage() {
       setZoneStatuses(statuses)
     }
 
-    // 초기 로드
     const loadInitial = async () => {
       try {
         const allData = await zoneAttendanceService.getAllByDate(todayKey)
@@ -191,7 +199,6 @@ export default function HomePage() {
         updateFromSupabase(allData)
       } catch (err) {
         console.error('[HomePage] Supabase load error:', err)
-        // 에러 시 localStorage 폴백
         const statuses: Record<string, ZoneStatus> = {}
         GRADES.forEach((gradeInfo) => {
           gradeInfo.zones.forEach((zone) => {
@@ -204,13 +211,11 @@ export default function HomePage() {
 
     loadInitial()
 
-    // 실시간 구독
     const unsubscribe = zoneAttendanceService.subscribeToDate(todayKey, (allData) => {
       console.log('[HomePage] Realtime update:', allData.length, 'zones')
       updateFromSupabase(allData)
     })
 
-    // 페이지 포커스 시 다시 로드
     const handleFocus = () => loadInitial()
     window.addEventListener('focus', handleFocus)
 
@@ -224,11 +229,8 @@ export default function HomePage() {
     setSearchQuery(query)
     if (query.length >= 1) {
       let results = searchStudentByName(query)
-      // 담당자 학년에 따라 필터링
       if (currentStaff) {
         results = results.filter((result) => {
-          // 1학년 담당자: 4층(4A,4B,4C,4D)만
-          // 2학년 담당자: 3층(3A,3B,3C,3D)만
           const floor = result.zoneId.startsWith('4') ? 1 : 2
           return floor === currentStaff.grade
         })
@@ -240,16 +242,13 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    // Check for current staff in sessionStorage
     const staffData = sessionStorage.getItem('currentStaff')
     if (staffData) {
       const staff = JSON.parse(staffData) as CurrentStaff
-      // Check if it's still today's date (한국 시간 기준)
       const today = getTodayKST()
       if (staff.date === today) {
         setCurrentStaff(staff)
       } else {
-        // Clear outdated staff data
         sessionStorage.removeItem('currentStaff')
       }
     }
@@ -264,7 +263,6 @@ export default function HomePage() {
     navigate('/start')
   }
 
-  // Get today's date in Korean format
   const today = new Date().toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: 'long',
@@ -294,7 +292,6 @@ export default function HomePage() {
         }
       />
 
-      {/* Current staff info bar */}
       <div className="bg-primary-500 text-white px-4 py-3">
         <div className="container mx-auto flex justify-between items-center">
           <div>
@@ -318,7 +315,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 임시 데이터 기간 안내 */}
       {isTemporaryPeriod(todayKey) && (
         <div className="bg-orange-50 border-b border-orange-200 px-4 py-3">
           <div className="container mx-auto">
@@ -334,7 +330,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 관리자 특이사항 */}
       {adminNotice && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
           <div className="container mx-auto">
@@ -352,11 +347,9 @@ export default function HomePage() {
       <main className="container mx-auto px-4 py-6 space-y-8">
         {GRADES
           .filter((gradeInfo) => {
-            // 담당자가 선택되었으면 해당 학년만 표시
             if (currentStaff) {
               return gradeInfo.grade === currentStaff.grade
             }
-            // 담당자 미선택 시 모든 학년 표시
             return true
           })
           .map((gradeInfo) => (
@@ -365,7 +358,6 @@ export default function HomePage() {
               {gradeInfo.name}
             </h2>
 
-            {/* Main zones grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {gradeInfo.zones.map((zone) => {
                 const status = zoneStatuses[zone.id]
@@ -417,7 +409,6 @@ export default function HomePage() {
         ))}
       </main>
 
-      {/* 학생 검색 모달 */}
       {showSearch && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
@@ -466,11 +457,16 @@ export default function HomePage() {
                           <div className="text-sm text-gray-500">좌석: {result.student.seatId}</div>
                         </div>
                       </div>
-                      {result.student.preAbsence && (
-                        <div className="mt-2 text-sm text-purple-600 bg-purple-50 px-2 py-1 rounded">
-                          사전 결석: {result.student.preAbsence.reason}
-                        </div>
-                      )}
+                      {(() => {
+                        const preAbsInfo = getPreAbsenceInfo(result.student.studentId, todayKey)
+                        return preAbsInfo ? (
+                          <div className={`mt-2 text-sm px-2 py-1 rounded ${
+                            preAbsInfo.type === '외박' ? 'text-indigo-600 bg-indigo-50' : 'text-purple-600 bg-purple-50'
+                          }`}>
+                            {preAbsInfo.type === '외박' ? '외박' : '사전 결석'}: {preAbsInfo.reason}
+                          </div>
+                        ) : null
+                      })()}
                     </button>
                   ))}
                 </div>
@@ -488,7 +484,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 버그 보고 모달 */}
       <BugReportModal
         isOpen={showBugReport}
         onClose={() => setShowBugReport(false)}

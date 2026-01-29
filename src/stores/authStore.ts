@@ -10,7 +10,6 @@ interface AuthState {
   isAuthenticated: boolean
   error: string | null
 
-  // Actions
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   loadUser: () => Promise<void>
@@ -80,5 +79,4 @@ export const useAuthStore = create<AuthState>((set) => ({
   clearError: () => set({ error: null }),
 }))
 
-// Selectors
 export const selectIsAdmin = (state: AuthState) => state.user?.role === 'admin'

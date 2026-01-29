@@ -1,10 +1,6 @@
 import type { SeatLayout } from '../types'
 
-// Seat layouts extracted from legacy Apps Script code
-// Format: Each row is an array of seat IDs, 'sp' (spacer), 'empty', or 'br' (line break)
-
 export const SEAT_LAYOUTS: Record<string, SeatLayout> = {
-  // ========== Grade 1 (4th Floor) ==========
 
   '4A': [
     ['4A146', '4A145', '4A144', '4A143', '4A142', 'sp', '4A141', '4A140', '4A139', '4A138', '4A137'],
@@ -98,7 +94,6 @@ export const SEAT_LAYOUTS: Record<string, SeatLayout> = {
     ['C409-006', 'C409-012', 'C409-018', 'C409-024', 'C409-030', 'C409-036'],
   ],
 
-  // ========== Grade 2 (3rd Floor) ==========
 
   '3A': [
     ['3A121', 'sp', '3A120', '3A119', '3A118', 'sp', '3A117', '3A116', '3A115', '3A114', '3A113', '3A112'],

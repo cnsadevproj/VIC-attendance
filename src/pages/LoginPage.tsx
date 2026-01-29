@@ -11,8 +11,6 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    // TODO: Implement Supabase auth
-    // For now, just navigate to home
     setTimeout(() => {
       setIsLoading(false)
       navigate('/')

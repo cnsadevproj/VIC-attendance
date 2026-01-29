@@ -8,9 +8,9 @@ import type { AbsenceEntry } from '../../services/absenceService'
 interface SeatMapProps {
   zoneId: string
   attendanceRecords: Map<string, AttendanceRecord>
-  studentNotes?: Record<string, string>  // 학생별 특이사항
-  dateKey?: string  // 현재 날짜 (YYYY-MM-DD)
-  preAbsenceEntries?: AbsenceEntry[]  // 사전결석/외박 데이터 배열
+  studentNotes?: Record<string, string>
+  dateKey?: string
+  preAbsenceEntries?: AbsenceEntry[]
   onSeatClick: (seatId: string) => void
   onSeatLongPress?: (seatId: string) => void
 }
@@ -24,10 +24,8 @@ export default function SeatMap({
   onSeatClick,
   onSeatLongPress,
 }: SeatMapProps) {
-  // 현재 날짜 (dateKey가 없으면 오늘 날짜)
   const currentDate = dateKey || new Date().toISOString().split('T')[0]
 
-  // 사전결석 여부 체크 함수 (entries 직접 사용)
   const checkPreAbsence = (studentId: string): boolean => {
     return preAbsenceEntries.some(entry =>
       entry.studentId === studentId &&
@@ -51,7 +49,6 @@ export default function SeatMap({
     <div className="bg-white rounded-xl shadow-lg p-4 overflow-x-auto">
       <div className="inline-block">
         {layout.map((row, rowIndex) => {
-          // Handle line break
           if (row[0] === 'br') {
             return <div key={`br-${rowIndex}`} className="h-6" />
           }
@@ -59,25 +56,20 @@ export default function SeatMap({
           return (
             <div key={rowIndex} className="seat-row">
               {row.map((cell, cellIndex) => {
-                // Handle spacer
                 if (cell === 'sp') {
                   return <div key={`sp-${cellIndex}`} className="seat-spacer" />
                 }
 
-                // Handle empty seat
                 if (cell === 'empty') {
                   return <div key={`empty-${cellIndex}`} className="seat-empty" />
                 }
 
-                // Regular seat
                 const seatId = cell as string
                 const student = getStudentBySeatId(seatId)
                 const isAssigned = student !== null
 
-                // Use seatId for record lookup
                 const record = attendanceRecords.get(seatId)
                 const hasNote = !!studentNotes[seatId]
-                // 현재 날짜에 사전결석인지 확인
                 const hasPreAbsence = student ? checkPreAbsence(student.studentId) : false
 
                 return (

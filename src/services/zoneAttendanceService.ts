@@ -1,11 +1,10 @@
-// Zone 단위 출결 데이터 Supabase 연동 서비스
 import { supabase } from '../config/supabase'
 import type { AttendanceRecord } from '../types'
 
 export interface ZoneAttendanceData {
   zone_id: string
   date: string
-  data: [string, AttendanceRecord][]  // [seatId, record][]
+  data: [string, AttendanceRecord][]
   recorded_by: string | null
   notes: Record<string, string> | null
   created_at?: string
@@ -13,7 +12,6 @@ export interface ZoneAttendanceData {
 }
 
 export const zoneAttendanceService = {
-  // 출결 데이터 저장 (upsert)
   async save(
     zoneId: string,
     date: string,
@@ -44,7 +42,6 @@ export const zoneAttendanceService = {
     console.log('[zoneAttendanceService] Saved:', zoneId, date)
   },
 
-  // 특정 zone/date의 출결 데이터 조회
   async get(zoneId: string, date: string): Promise<ZoneAttendanceData | null> {
     const { data, error } = await supabase
       .from('zone_attendance')
@@ -55,7 +52,6 @@ export const zoneAttendanceService = {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        // No rows found
         return null
       }
       console.error('[zoneAttendanceService] Get error:', error)
@@ -65,7 +61,6 @@ export const zoneAttendanceService = {
     return data as ZoneAttendanceData
   },
 
-  // 특정 날짜의 모든 zone 출결 데이터 조회
   async getAllByDate(date: string): Promise<ZoneAttendanceData[]> {
     const { data, error } = await supabase
       .from('zone_attendance')
@@ -80,7 +75,6 @@ export const zoneAttendanceService = {
     return (data || []) as ZoneAttendanceData[]
   },
 
-  // 실시간 구독 설정
   subscribeToDate(date: string, callback: (data: ZoneAttendanceData[]) => void) {
     const channel = supabase
       .channel(`zone_attendance_${date}`)
@@ -93,7 +87,6 @@ export const zoneAttendanceService = {
           filter: `date=eq.${date}`
         },
         async () => {
-          // 변경 발생 시 전체 데이터 다시 조회
           const data = await this.getAllByDate(date)
           callback(data)
         }

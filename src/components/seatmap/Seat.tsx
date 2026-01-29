@@ -4,15 +4,14 @@ interface SeatProps {
   seatId: string
   studentName?: string
   studentId?: string
-  isAssigned: boolean  // Whether a student is assigned to this seat
+  isAssigned: boolean
   status: 'present' | 'absent' | 'unchecked'
-  hasPreAbsence?: boolean  // 사전 결석 신청 여부
-  hasNote?: boolean  // 특이사항 있음 여부
+  hasPreAbsence?: boolean
+  hasNote?: boolean
   onClick: () => void
-  onLongPress?: () => void  // 꾹 누르면 호출
+  onLongPress?: () => void
 }
 
-// 배경색과 텍스트색만 (테두리는 별도 처리)
 const statusBgClasses: Record<string, string> = {
   present: 'bg-green-100 text-green-800',
   absent: 'bg-red-100 text-red-800',
@@ -20,7 +19,6 @@ const statusBgClasses: Record<string, string> = {
   unassigned: 'bg-gray-100 text-gray-400',
 }
 
-// 기본 테두리색 (사전결석이 아닐 때)
 const statusBorderClasses: Record<string, string> = {
   present: 'border-green-500',
   absent: 'border-red-500',
@@ -44,7 +42,7 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
     longPressTimer.current = window.setTimeout(() => {
       isLongPress.current = true
       onLongPress()
-    }, 500) // 0.5초 꾹 누르기
+    }, 500)
   }, [onLongPress])
 
   const handleTouchEnd = useCallback(() => {
@@ -61,7 +59,6 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
     isLongPress.current = false
   }, [onClick])
 
-  // Unassigned seat styling
   if (!isAssigned) {
     return (
       <div
@@ -80,7 +77,6 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
     )
   }
 
-  // 사전 결석/외박 학생은 항상 보라색 테두리로 표시
   const borderClass = hasPreAbsence
     ? 'border-purple-500 border-[3px]'
     : `${statusBorderClasses[status]} border-2`
@@ -103,22 +99,18 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
         flex flex-col items-center justify-center
       `}
     >
-      {/* Seat ID */}
       <span className="text-[0.45rem] leading-tight text-gray-500">
         {seatId}
       </span>
 
-      {/* Student ID */}
       <span className="font-bold text-[0.5rem] leading-tight">
         {studentId}
       </span>
 
-      {/* Student Name */}
       <span className="text-[0.5rem] leading-tight truncate max-w-full px-0.5 font-medium">
         {studentName || ''}
       </span>
 
-      {/* Status Label */}
       <span className={`text-[0.45rem] leading-tight font-semibold
         ${status === 'present' ? 'text-green-600' : ''}
         ${status === 'absent' ? 'text-red-600' : ''}
@@ -127,7 +119,6 @@ function Seat({ seatId, studentName, studentId, isAssigned, status, hasPreAbsenc
         {statusLabels[status]}
       </span>
 
-      {/* 특이사항 표시 아이콘 (노란색 느낌표) */}
       {hasNote && (
         <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm border border-yellow-500">
           <span className="text-white text-[0.5rem] font-bold">!</span>

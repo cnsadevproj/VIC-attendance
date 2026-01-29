@@ -9,12 +9,10 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { initializeMockData, isMockDataInitialized } from './utils/generateMockData'
 
 function App() {
-  // 임시 데이터 초기화 (테스트 기간 동안만)
   useEffect(() => {
     const today = new Date()
     const testEndDate = new Date('2026-01-02')
 
-    // 테스트 기간 내이고 데이터가 초기화되지 않았으면 초기화
     if (today <= testEndDate && !isMockDataInitialized()) {
       initializeMockData()
     }

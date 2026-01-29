@@ -44,7 +44,6 @@ export default function BugReportModal({ isOpen, onClose }: BugReportModalProps)
       isRead: false,
     }
 
-    // localStorage에서 기존 버그 보고 목록 가져오기
     const existingReports = localStorage.getItem('bug_reports')
     let reports: BugReport[] = []
     if (existingReports) {
@@ -55,15 +54,12 @@ export default function BugReportModal({ isOpen, onClose }: BugReportModalProps)
       }
     }
 
-    // 새 보고 추가
     reports.unshift(bugReport)
 
-    // 최대 100개까지만 저장
     if (reports.length > 100) {
       reports = reports.slice(0, 100)
     }
 
-    // localStorage에 저장
     localStorage.setItem('bug_reports', JSON.stringify(reports))
 
     setTimeout(() => {
@@ -90,7 +86,6 @@ export default function BugReportModal({ isOpen, onClose }: BugReportModalProps)
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
-        {/* 헤더 */}
         <div className="bg-orange-500 text-white p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,7 +102,6 @@ export default function BugReportModal({ isOpen, onClose }: BugReportModalProps)
           </button>
         </div>
 
-        {/* 내용 */}
         <div className="p-4 overflow-y-auto flex-1 space-y-4">
           {sent ? (
             <div className="text-center py-8">
@@ -167,7 +161,6 @@ export default function BugReportModal({ isOpen, onClose }: BugReportModalProps)
           )}
         </div>
 
-        {/* 푸터 */}
         {!sent && (
           <div className="p-4 border-t flex gap-2">
             <button

@@ -35,7 +35,6 @@ interface AttendanceDetail {
   preAbsenceReason?: string
 }
 
-// 구역 설정
 const ZONES = [
   { id: '4A', name: '4층 A구역', grade: 1 },
   { id: '4B', name: '4층 B구역', grade: 1 },
@@ -47,14 +46,12 @@ const ZONES = [
   { id: '3D', name: '3층 D구역', grade: 2 },
 ]
 
-// 임시 데이터 기간 (2025년 12월 22일 ~ 2026년 1월 2일, 주말 제외)
 const TEMP_STAFF_SCHEDULE: Record<string, { grade1: [string, string], grade2: [string, string] }> = {
   '2025-12-22': { grade1: ['김종규', '이건우'], grade2: ['조민경', '노예원'] },
   '2025-12-23': { grade1: ['이예진', '홍선영'], grade2: ['장보경', '김솔'] },
   '2025-12-24': { grade1: ['홍승민', '조현정'], grade2: ['강현수', '민수정'] },
   '2025-12-25': { grade1: ['박한비', '서률지'], grade2: ['정수빈', '김종규'] },
   '2025-12-26': { grade1: ['이건우', '조민경'], grade2: ['노예원', '이예진'] },
-  // 12/27(토), 12/28(일) 주말 제외
   '2025-12-29': { grade1: ['서률지', '정수빈'], grade2: ['김종규', '이건우'] },
   '2025-12-30': { grade1: ['조민경', '노예원'], grade2: ['이예진', '홍선영'] },
   '2025-12-31': { grade1: ['장보경', '김솔'], grade2: ['홍승민', '조현정'] },
@@ -62,7 +59,6 @@ const TEMP_STAFF_SCHEDULE: Record<string, { grade1: [string, string], grade2: [s
   '2026-01-02': { grade1: ['정수빈', '김종규'], grade2: ['이건우', '조민경'] },
 }
 
-// 고정된 담당자 스케줄 (2026년 1월 7일 ~ 2월 3일, 주말 제외)
 const FIXED_STAFF_SCHEDULE: Record<string, { grade1: [string, string], grade2: [string, string] }> = {
   '2026-01-07': { grade1: ['이예진', '조현정'], grade2: ['강현수', '김종규'] },
   '2026-01-08': { grade1: ['홍선영', '홍승민'], grade2: ['민수정', '정수빈'] },
@@ -86,35 +82,29 @@ const FIXED_STAFF_SCHEDULE: Record<string, { grade1: [string, string], grade2: [
   '2026-02-03': { grade1: ['민수정', '김솔'], grade2: ['정수빈', '이건우'] },
 }
 
-// 전체 스케줄 (임시 + 정규)
 const DATE_STAFF_SCHEDULE: Record<string, { grade1: [string, string], grade2: [string, string] }> = {
   ...TEMP_STAFF_SCHEDULE,
   ...FIXED_STAFF_SCHEDULE,
 }
 
-// 운영 날짜 목록
 const OPERATING_DATES = Object.keys(DATE_STAFF_SCHEDULE).sort()
 
-// 날짜별 구역 완료율 동적 생성 (과거 날짜는 100% 완료)
 function generateCompletionRates(): Record<string, Record<string, number>> {
   const rates: Record<string, Record<string, number>> = {}
-  const today = getTodayKST()  // 한국 시간 기준
+  const today = getTodayKST()
 
   OPERATING_DATES.forEach((dateStr) => {
     if (dateStr < today) {
-      // 과거 날짜: 100% 완료
       rates[dateStr] = {
         '4A': 1.0, '4B': 1.0, '4C': 1.0, '4D': 1.0,
         '3A': 1.0, '3B': 1.0, '3C': 1.0, '3D': 1.0,
       }
     } else if (dateStr === today) {
-      // 오늘: 부분 완료 (실제 데이터는 localStorage에서)
       rates[dateStr] = {
         '4A': 0.0, '4B': 0.0, '4C': 0.0, '4D': 0.0,
         '3A': 0.0, '3B': 0.0, '3C': 0.0, '3D': 0.0,
       }
     } else {
-      // 미래 날짜: 0%
       rates[dateStr] = {
         '4A': 0.0, '4B': 0.0, '4C': 0.0, '4D': 0.0,
         '3A': 0.0, '3B': 0.0, '3C': 0.0, '3D': 0.0,
@@ -127,7 +117,6 @@ function generateCompletionRates(): Record<string, Record<string, number>> {
 
 const DATE_COMPLETION_RATES = generateCompletionRates()
 
-// 날짜별 구역 기록자 매핑 생성
 function getZoneRecordersForDate(dateStr: string): Record<string, string> {
   const schedule = DATE_STAFF_SCHEDULE[dateStr]
   if (!schedule) return {}
@@ -135,13 +124,11 @@ function getZoneRecordersForDate(dateStr: string): Record<string, string> {
   const completionRates = DATE_COMPLETION_RATES[dateStr] || {}
   const recorders: Record<string, string> = {}
 
-  // 1학년 (4층): 첫번째 담당자가 A,B / 두번째 담당자가 C,D
   if (completionRates['4A'] > 0) recorders['4A'] = schedule.grade1[0]
   if (completionRates['4B'] > 0) recorders['4B'] = schedule.grade1[0]
   if (completionRates['4C'] > 0) recorders['4C'] = schedule.grade1[1]
   if (completionRates['4D'] > 0) recorders['4D'] = schedule.grade1[1]
 
-  // 2학년 (3층): 첫번째 담당자가 A,B / 두번째 담당자가 C,D
   if (completionRates['3A'] > 0) recorders['3A'] = schedule.grade2[0]
   if (completionRates['3B'] > 0) recorders['3B'] = schedule.grade2[0]
   if (completionRates['3C'] > 0) recorders['3C'] = schedule.grade2[1]
@@ -150,12 +137,10 @@ function getZoneRecordersForDate(dateStr: string): Record<string, string> {
   return recorders
 }
 
-// 날짜별 샘플 출결 데이터 생성
 function generateSampleDataForDate(dateStr: string): Map<string, Map<string, AttendanceRecord>> {
   const allData = new Map<string, Map<string, AttendanceRecord>>()
   const completionRates = DATE_COMPLETION_RATES[dateStr] || {}
 
-  // 날짜 기반 시드 생성
   const dateSeed = dateStr.split('-').reduce((acc, val) => acc + parseInt(val), 0)
   let seed = dateSeed * 12345
   const seededRandom = () => {
@@ -196,13 +181,11 @@ function generateSampleDataForDate(dateStr: string): Map<string, Map<string, Att
   return allData
 }
 
-// 모든 날짜에 대한 샘플 데이터 생성 (과거 날짜 조회용, localStorage에 저장하지 않음)
 const ALL_SAMPLE_DATA: Record<string, Map<string, Map<string, AttendanceRecord>>> = {}
 Object.keys(DATE_COMPLETION_RATES).forEach(dateStr => {
   ALL_SAMPLE_DATA[dateStr] = generateSampleDataForDate(dateStr)
 })
 
-// 임시저장 구역 판별 함수
 function getTempSaveZonesForDate(dateStr: string): string[] {
   const rates = DATE_COMPLETION_RATES[dateStr] || {}
   return Object.entries(rates)
@@ -247,15 +230,13 @@ const ADMIN_PASSWORD = '3028'
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const [isAuthenticated] = useState(() => {
-    // 세션 동안 인증 상태 유지
     return sessionStorage.getItem('adminAuth') === 'true'
   })
   const [password, setPassword] = useState('')
   const [passwordError, setPasswordError] = useState(false)
   const [date, setDate] = useState(() => {
-    // 세션에 저장된 날짜가 있으면 그걸 사용
     const savedDate = sessionStorage.getItem('adminSelectedDate')
-    return savedDate || getTodayKST()  // 한국 시간 기준
+    return savedDate || getTodayKST()
   })
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null)
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
@@ -273,20 +254,14 @@ export default function AdminDashboard() {
   const [exportMessage, setExportMessage] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [isSendingDiscord, setIsSendingDiscord] = useState(false)
-  const [showSmsModal, setShowSmsModal] = useState(false)
-  const [smsMessage, setSmsMessage] = useState<string | null>(null)
   const [showNotesModal, setShowNotesModal] = useState(false)
-  const [excludePreAbsence, setExcludePreAbsence] = useState(false)
 
-  // 스프레드시트에서 사전결석/외박 데이터 로드
   const { getPreAbsenceInfo } = usePreAbsences()
 
-  // Supabase에서 출결 데이터 로드
   const [supabaseData, setSupabaseData] = useState<Map<string, Map<string, AttendanceRecord>>>(new Map())
   const [supabaseRecorders, setSupabaseRecorders] = useState<Map<string, string>>(new Map())
   const [supabaseNotes, setSupabaseNotes] = useState<Record<string, string>>({})
 
-  // Supabase 데이터 로드 및 실시간 구독
   useEffect(() => {
     const loadSupabaseData = async () => {
       try {
@@ -319,7 +294,6 @@ export default function AdminDashboard() {
 
     loadSupabaseData()
 
-    // 실시간 구독
     const unsubscribe = zoneAttendanceService.subscribeToDate(date, (allData) => {
       console.log('[AdminDashboard] Realtime update:', allData.length, 'zones')
 
@@ -352,7 +326,6 @@ export default function AdminDashboard() {
   const handleSearch = (query: string) => {
     setSearchQuery(query)
     if (query.length >= 1) {
-      // 1, 2학년 전체 검색 (필터링 없음)
       const results = searchStudentByName(query)
       setSearchResults(results)
     } else {
@@ -360,23 +333,19 @@ export default function AdminDashboard() {
     }
   }
 
-  // 선택된 날짜의 출결 데이터 (Supabase 우선 → localStorage → 샘플 데이터)
   const selectedDateData = useMemo(() => {
     try {
-      const todayKey = getTodayKST()  // 한국 시간 기준
+      const todayKey = getTodayKST()
       const result = new Map<string, Map<string, AttendanceRecord>>()
 
       ZONES.forEach((zone) => {
         try {
-          // 1. Supabase 데이터 우선 사용 (실시간 동기화)
           if (supabaseData.has(zone.id)) {
             result.set(zone.id, supabaseData.get(zone.id) || new Map())
             return
           }
 
-          // 2. 오늘 날짜인 경우 localStorage에서 실제 데이터 읽기
           if (date === todayKey) {
-            // 먼저 저장된 데이터 확인
             const savedData = localStorage.getItem(`attendance_saved_${zone.id}_${date}`)
             if (savedData) {
               try {
@@ -386,12 +355,10 @@ export default function AdminDashboard() {
                   return
                 }
               } catch {
-                // 파싱 실패 시 해당 데이터 삭제
                 localStorage.removeItem(`attendance_saved_${zone.id}_${date}`)
               }
             }
 
-            // 임시저장 데이터 확인
             const tempData = localStorage.getItem(`attendance_temp_${zone.id}_${date}`)
             if (tempData) {
               try {
@@ -401,13 +368,11 @@ export default function AdminDashboard() {
                   return
                 }
               } catch {
-                // 파싱 실패 시 해당 데이터 삭제
                 localStorage.removeItem(`attendance_temp_${zone.id}_${date}`)
               }
             }
           }
 
-          // 3. localStorage에 데이터가 없으면 샘플 데이터 사용
           const sampleData = ALL_SAMPLE_DATA[date]
           if (sampleData && sampleData.get) {
             result.set(zone.id, sampleData.get(zone.id) || new Map())
@@ -415,7 +380,6 @@ export default function AdminDashboard() {
             result.set(zone.id, new Map())
           }
         } catch {
-          // 개별 zone 처리 실패 시 빈 Map 설정
           result.set(zone.id, new Map())
         }
       })
@@ -427,10 +391,9 @@ export default function AdminDashboard() {
     }
   }, [date, supabaseData])
 
-  // 실제 임시저장 구역 판별 (오늘 날짜인 경우 localStorage 확인)
   const selectedDateTempZones = useMemo(() => {
     try {
-      const todayKey = getTodayKST()  // 한국 시간 기준
+      const todayKey = getTodayKST()
 
       if (date === todayKey) {
         const tempZones: string[] = []
@@ -442,7 +405,6 @@ export default function AdminDashboard() {
               tempZones.push(zone.id)
             }
           } catch {
-            // ignore
           }
         })
         return tempZones
@@ -454,18 +416,15 @@ export default function AdminDashboard() {
     }
   }, [date])
 
-  // 기록자 정보 (Supabase 우선 → localStorage → 샘플 데이터)
   const selectedDateRecorders = useMemo(() => {
     try {
-      const todayKey = getTodayKST()  // 한국 시간 기준
+      const todayKey = getTodayKST()
       const recorders = getZoneRecordersForDate(date) || {}
 
-      // Supabase 기록자 정보 우선 사용
       supabaseRecorders.forEach((recorder, zoneId) => {
         recorders[zoneId] = recorder
       })
 
-      // 오늘 날짜인 경우 localStorage에서 실제 기록자 덮어쓰기 (Supabase에 없는 경우)
       if (date === todayKey) {
         ZONES.forEach((zone) => {
           try {
@@ -476,7 +435,6 @@ export default function AdminDashboard() {
               }
             }
           } catch {
-            // ignore
           }
         })
       }
@@ -487,7 +445,6 @@ export default function AdminDashboard() {
     }
   }, [date, supabaseRecorders])
 
-  // 검색 결과에 출결 상태 추가
   const getAttendanceStatus = (seatId: string, zoneId: string): 'present' | 'absent' | 'unchecked' => {
     const zoneRecords = selectedDateData.get(zoneId)
     if (!zoneRecords) return 'unchecked'
@@ -495,17 +452,14 @@ export default function AdminDashboard() {
     return record?.status || 'unchecked'
   }
 
-  // 금일 담당자 불러오기
   useEffect(() => {
     fetchTodayStaff().then(setTodayStaff)
   }, [])
 
-  // 선택한 날짜 세션에 저장
   useEffect(() => {
     sessionStorage.setItem('adminSelectedDate', date)
   }, [date])
 
-  // 선택한 날짜의 특이사항 불러오기 (Supabase)
   useEffect(() => {
     const loadNotice = async () => {
       try {
@@ -513,7 +467,6 @@ export default function AdminDashboard() {
         setNoticeText(notice)
       } catch (error) {
         console.error('[AdminDashboard] Failed to load notice:', error)
-        // fallback to localStorage
         const savedNotice = localStorage.getItem(`admin_notice_${date}`)
         setNoticeText(savedNotice || '')
       }
@@ -521,7 +474,6 @@ export default function AdminDashboard() {
     loadNotice()
     setShowNoticeInput(false)
 
-    // 실시간 구독 설정
     const unsubscribe = noticeService.subscribeToDate(date, (notice) => {
       setNoticeText(notice)
     })
@@ -535,7 +487,6 @@ export default function AdminDashboard() {
     try {
       if (noticeText.trim()) {
         await noticeService.save(date, noticeText.trim())
-        // localStorage에도 백업 저장
         localStorage.setItem(`admin_notice_${date}`, noticeText.trim())
       } else {
         await noticeService.delete(date)
@@ -543,7 +494,6 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error('[AdminDashboard] Failed to save notice:', error)
-      // Supabase 실패 시 localStorage에만 저장
       if (noticeText.trim()) {
         localStorage.setItem(`admin_notice_${date}`, noticeText.trim())
       } else {
@@ -557,7 +507,6 @@ export default function AdminDashboard() {
     e.preventDefault()
     if (password === ADMIN_PASSWORD) {
       sessionStorage.setItem('adminAuth', 'true')
-      // 페이지 새로고침으로 깔끔하게 대시보드 로드
       window.location.reload()
     } else {
       setPasswordError(true)
@@ -565,7 +514,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // 비밀번호 입력 화면
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -615,7 +563,6 @@ export default function AdminDashboard() {
     )
   }
 
-  // 구역별 요약 계산
   const zoneSummaries = useMemo(() => {
     try {
       return ZONES.map((zone) => {
@@ -623,7 +570,6 @@ export default function AdminDashboard() {
           const layout = SEAT_LAYOUTS[zone.id]
           if (!layout) return null
 
-          // 배정된 학생 수 계산
           let totalStudents = 0
           layout.forEach((row) => {
             if (row[0] === 'br') return
@@ -635,15 +581,13 @@ export default function AdminDashboard() {
             })
           })
 
-          // 출결 기록 (선택된 날짜 데이터 사용)
           const records = selectedDateData.get(zone.id) || new Map()
           let present = 0
           let absent = 0
 
-          // 실제 배정된 학생에 대해서만 출결 카운트
           records.forEach((record, seatId) => {
             const student = getStudentBySeatId(seatId)
-            if (!student) return // 학생이 없는 좌석은 무시
+            if (!student) return
             if (record.status === 'present') present++
             else if (record.status === 'absent') absent++
           })
@@ -659,7 +603,7 @@ export default function AdminDashboard() {
             grade: zone.grade,
             present,
             absent,
-            unchecked: Math.max(0, unchecked), // 음수 방지
+            unchecked: Math.max(0, unchecked),
             total: totalStudents,
             completionRate,
             hasTempSave: selectedDateTempZones.includes(zone.id),
@@ -674,12 +618,10 @@ export default function AdminDashboard() {
     }
   }, [date, selectedDateData, selectedDateTempZones, selectedDateRecorders])
 
-  // 학년 필터링
   const filteredSummaries = selectedGrade
     ? zoneSummaries.filter((z) => z.grade === selectedGrade)
     : zoneSummaries
 
-  // 전체 통계
   const overallStats = filteredSummaries.reduce(
     (acc, zone) => ({
       totalStudents: acc.totalStudents + zone.total,
@@ -694,7 +636,6 @@ export default function AdminDashboard() {
     ? Math.round(((overallStats.present + overallStats.absent) / overallStats.totalStudents) * 100)
     : 0
 
-  // 출결 상세 데이터
   const attendanceDetails = useMemo(() => {
     if (!selectedZone) return []
 
@@ -729,7 +670,6 @@ export default function AdminDashboard() {
     return details
   }, [selectedZone, selectedDateData, date, getPreAbsenceInfo])
 
-  // 전체 학생 목록 (필터별)
   const allStudentsByStatus = useMemo(() => {
     const students: {
       seatId: string
@@ -742,7 +682,6 @@ export default function AdminDashboard() {
       preAbsenceReason?: string
     }[] = []
 
-    // 필터링된 구역들 (선택된 학년 기준)
     filteredSummaries.forEach((zoneSummary) => {
       const layout = SEAT_LAYOUTS[zoneSummary.zoneId]
       if (!layout) return
@@ -777,32 +716,26 @@ export default function AdminDashboard() {
     return students
   }, [filteredSummaries, selectedDateData, date, getPreAbsenceInfo])
 
-  // 선택된 필터에 따른 학생 목록
   const filteredStudentsList = useMemo(() => {
     if (!selectedStatusFilter) return []
     if (selectedStatusFilter === 'all') return allStudentsByStatus
     return allStudentsByStatus.filter(s => s.status === selectedStatusFilter)
   }, [selectedStatusFilter, allStudentsByStatus])
 
-  // 층별로 구역 분리
   const grade1Zones = filteredSummaries.filter((z) => z.grade === 1)
   const grade2Zones = filteredSummaries.filter((z) => z.grade === 2)
 
-  // 학생 특이사항 불러오기 (Supabase + localStorage 병합)
   const studentNotes = useMemo(() => {
     let notes: Record<string, string> = {}
 
-    // localStorage에서 불러오기
     try {
       const notesData = localStorage.getItem(`student_notes_${date}`)
       if (notesData) {
         notes = JSON.parse(notesData) as Record<string, string>
       }
     } catch {
-      // 파싱 실패 시 무시
     }
 
-    // Supabase 데이터로 덮어쓰기 (서버 데이터 우선)
     if (Object.keys(supabaseNotes).length > 0) {
       notes = { ...notes, ...supabaseNotes }
     }
@@ -810,11 +743,9 @@ export default function AdminDashboard() {
     return notes
   }, [date, supabaseNotes])
 
-  // 결석자 목록 (내보내기용)
   const absentStudentsForExport = useMemo(() => {
     const result: AbsentStudent[] = []
 
-    // 모든 구역에서 결석자 수집
     ZONES.forEach((zone) => {
       const layout = SEAT_LAYOUTS[zone.id]
       if (!layout) return
@@ -830,10 +761,8 @@ export default function AdminDashboard() {
             if (student) {
               const record = records.get(seatId)
               if (record?.status === 'absent') {
-                // 비고: 사전결석 사유 + 특이사항 메모
                 const parts: string[] = []
 
-                // 사전결석/외박 사유
                 const preAbsInfo = getPreAbsenceInfo(student.studentId, date)
                 if (preAbsInfo) {
                   if (preAbsInfo.reason) {
@@ -843,13 +772,11 @@ export default function AdminDashboard() {
                   }
                 }
 
-                // 학생별 특이사항 (별도 localStorage에서)
                 const studentNote = studentNotes[seatId]
                 if (studentNote) {
                   parts.push(studentNote)
                 }
 
-                // 출결 기록의 메모
                 if (record.note) {
                   parts.push(record.note)
                 }
@@ -867,13 +794,11 @@ export default function AdminDashboard() {
       })
     })
 
-    // 좌석번호 순으로 정렬
     result.sort((a, b) => a.seatId.localeCompare(b.seatId))
 
     return result
   }, [selectedDateData, studentNotes, getPreAbsenceInfo, date])
 
-  // 특이사항이 있는 학생 목록 (출석/결석 상관없이 모든 특이사항 학생)
   const studentsWithNotes = useMemo(() => {
     const result: (StudentWithNote & { status: 'present' | 'absent' | 'unchecked' })[] = []
 
@@ -892,7 +817,6 @@ export default function AdminDashboard() {
             if (student) {
               const record = records.get(seatId)
               const note = studentNotes[seatId] || record?.note
-              // 특이사항이 있는 모든 학생 (출석/결석 무관)
               if (note) {
                 result.push({
                   seatId,
@@ -908,13 +832,11 @@ export default function AdminDashboard() {
       })
     })
 
-    // 좌석번호 순으로 정렬
     result.sort((a, b) => a.seatId.localeCompare(b.seatId))
 
     return result
   }, [selectedDateData, studentNotes])
 
-  // 클립보드로 내보내기
   const handleExportToClipboard = async () => {
     const text = exportToClipboard(date, absentStudentsForExport)
     try {
@@ -925,7 +847,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // Google Sheets에 직접 내보내기
   const handleExportToSheets = async () => {
     setIsExporting(true)
     setExportMessage(null)
@@ -935,7 +856,6 @@ export default function AdminDashboard() {
       setExportMessage(result.message)
 
       if (result.success && result.sheetUrl) {
-        // 성공 시 시트 열기
         setTimeout(() => {
           window.open(result.sheetUrl, '_blank')
         }, 500)
@@ -1000,7 +920,6 @@ export default function AdminDashboard() {
         }
       />
 
-      {/* Date Filter */}
       <div className="bg-white border-b px-4 py-3 flex flex-wrap gap-3 items-center">
         <input
           type="date"
@@ -1017,15 +936,6 @@ export default function AdminDashboard() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
           내보내기
-        </button>
-        <button
-          onClick={() => setShowSmsModal(true)}
-          className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 flex items-center gap-1"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
-          결석자 문자
         </button>
         <div className="flex gap-1 ml-auto">
           <button
@@ -1054,7 +964,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 임시 데이터 기간 안내 */}
       {isTemporaryPeriod(date) && (
         <div className="bg-orange-50 border-b border-orange-200 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -1066,7 +975,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 선택된 날짜 담당자 */}
       <div className="bg-white border-b px-4 py-3">
         <div className="flex gap-4">
           <div className="flex-1">
@@ -1084,7 +992,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 특이사항 - 선택한 날짜 기준 */}
       <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -1140,9 +1047,7 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Content */}
       <div className="px-4 py-4 overflow-auto flex-1">
-        {/* Overall Summary */}
         <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">전체 현황</h2>
@@ -1195,10 +1100,8 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Zone Status - 층별로 분리 */}
         <h2 className="text-lg font-bold text-gray-800 mb-3">구역별 현황</h2>
 
-        {/* 1학년 (4층) */}
         {grade1Zones.length > 0 && (
           <div className="mb-4">
             <div className="text-sm font-medium text-gray-500 mb-2">1학년 (4층)</div>
@@ -1250,7 +1153,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 2학년 (3층) */}
         {grade2Zones.length > 0 && (
           <div className="mb-4">
             <div className="text-sm font-medium text-gray-500 mb-2">2학년 (3층)</div>
@@ -1303,7 +1205,6 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Attendance Detail Modal */}
       {selectedZone && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col">
@@ -1356,7 +1257,6 @@ export default function AdminDashboard() {
               <button
                 onClick={() => {
                   const recorder = selectedDateRecorders[selectedZone]
-                  // 선택한 날짜의 출결 데이터를 navigation state로 전달
                   const zoneData = selectedDateData.get(selectedZone)
                   const viewData = zoneData && zoneData.size > 0
                     ? Array.from(zoneData.entries())
@@ -1385,7 +1285,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 학생 검색 모달 */}
       {showSearch && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
@@ -1472,7 +1371,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 상태별 학생 목록 모달 */}
       {selectedStatusFilter && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col">
@@ -1546,7 +1444,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 내보내기 모달 */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
@@ -1592,7 +1489,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* 결석자 미리보기 */}
               {absentStudentsForExport.length > 0 && (
                 <div className="mb-4 max-h-48 overflow-y-auto">
                   <div className="text-sm text-gray-500 mb-2">결석자 목록</div>
@@ -1627,7 +1523,6 @@ export default function AdminDashboard() {
               )}
 
               <div className="space-y-2">
-                {/* Apps Script 연동 버튼 (설정된 경우) */}
                 {isAppsScriptConfigured() ? (
                   <button
                     onClick={handleExportToSheets}
@@ -1662,7 +1557,6 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
-                {/* Discord 보고 버튼 */}
                 <button
                   onClick={async () => {
                     const dateObj = new Date(date + 'T00:00:00')
@@ -1673,21 +1567,18 @@ export default function AdminDashboard() {
                     const totalAbsent = absentStudentsForExport.length
                     const displayDate = `${month}월 ${day}일(${weekday})`
 
-                    // 부장님께 보낼 메시지
                     const reportMessage = `안녕하세요, 이현경 부장님.
 ${displayDate} 겨울방학 방과후학교 조간면학 출결현황 보내드립니다.
 총 ${totalAbsent}명의 학생 및 학부모님께 알림 발송 완료했습니다.
 [VIC 조간면학일지 스프레드시트] https://docs.google.com/spreadsheets/d/1gVFE9dxJ-tl6f4KFqe5z2XDZ2B5mVgzpFAj7s-XrLAs/edit?usp=sharing
 감사합니다.`
 
-                    // 클립보드에 복사
                     try {
                       await navigator.clipboard.writeText(reportMessage)
                     } catch {
                       console.error('클립보드 복사 실패')
                     }
 
-                    // Discord 전송 (SMS Server 경유 - 테이블 PNG 포함)
                     setIsSendingDiscord(true)
                     try {
                       const result = await sendDiscordReport({
@@ -1760,13 +1651,11 @@ ${displayDate} 겨울방학 방과후학교 조간면학 출결현황 보내드�
         </div>
       )}
 
-      {/* 버그 보고 작성 모달 */}
       <BugReportModal
         isOpen={showBugReport}
         onClose={() => setShowBugReport(false)}
       />
 
-      {/* 버그 보고 목록 모달 */}
       {showBugReports && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
@@ -1875,233 +1764,7 @@ ${displayDate} 겨울방학 방과후학교 조간면학 출결현황 보내드�
         </div>
       )}
 
-      {/* SMS 발송 모달 - 3카테고리 */}
-      {showSmsModal && (() => {
-        // 결석자를 3개 카테고리로 분류
-        const commuteAbsent: { studentId: string; name: string; seatId: string; isPreAbsence: boolean }[] = []
-        const dormOvernightAbsent: { studentId: string; name: string; seatId: string }[] = []
-        const dormNoOvernightAbsent: { studentId: string; name: string; seatId: string; isPreAbsence: boolean }[] = []
 
-        absentStudentsForExport.forEach((s) => {
-          const student = getStudentBySeatId(s.seatId)
-          if (!student) return
-
-          const preAbsInfo = getPreAbsenceInfo(student.studentId, date)
-          const isPreAbsence = !!preAbsInfo
-
-          if (student.residenceType === 'commute') {
-            // 통학생
-            commuteAbsent.push({ studentId: student.studentId, name: student.name, seatId: s.seatId, isPreAbsence })
-          } else {
-            // 기숙사생 - 외박 여부 확인
-            if (preAbsInfo && preAbsInfo.type === '외박') {
-              // 외박 신청한 기숙사생
-              dormOvernightAbsent.push({ studentId: student.studentId, name: student.name, seatId: s.seatId })
-            } else {
-              // 외박 신청 안 한 기숙사생
-              dormNoOvernightAbsent.push({ studentId: student.studentId, name: student.name, seatId: s.seatId, isPreAbsence })
-            }
-          }
-        })
-
-        // 사전결석자 제외 필터링
-        const filteredCommute = excludePreAbsence
-          ? commuteAbsent.filter(s => !s.isPreAbsence)
-          : commuteAbsent
-        const filteredDormNoOvernight = excludePreAbsence
-          ? dormNoOvernightAbsent.filter(s => !s.isPreAbsence)
-          : dormNoOvernightAbsent
-
-        const copyToClipboard = async (studentIds: string[], label: string) => {
-          const text = studentIds.join('\n')
-          try {
-            await navigator.clipboard.writeText(text)
-            setSmsMessage(`${label} 학번 ${studentIds.length}명 복사됨!`)
-          } catch {
-            setSmsMessage('복사 실패')
-          }
-        }
-
-        const MSG_COMMUTE = `안녕하세요, 충남삼성고입니다.
-본 메시지는 금일 08:30 면학실 출석 확인이 되지 않은 학생을 대상으로 자동 발송됩니다. 출석 확인은 08:30부터 면학실에서 진행되오니, 반드시 출석 체크를 완료한 후 방과후 교실로 이동해 주시기 바랍니다. 원활한 운영을 위해 협조 부탁드립니다. 감사합니다.`
-
-        const MSG_DORM_OVERNIGHT = `안녕하세요, 충남삼성고입니다.
-오늘은 방과후 수업일입니다. 귀댁의 학생이 아침 출결확인에 참여하지 않아 출석체크가 되지 않은 학부모님들께 자동으로 메시지를 보내드립니다. 출결확인 시간과 장소는 면학실(08:30)입니다. 출석 체크 후 방과후 교실로 이동할 수 있도록 협조 부탁 드립니다. 감사합니다.`
-
-        const MSG_DORM_NO_OVERNIGHT = `안녕하세요, 충남삼성고입니다.
-본 메시지는 금일 08:30 면학실 출석 확인이 되지 않은 학생을 대상으로 자동 발송됩니다. 출석 확인은 08:30부터 면학실에서 진행되오니, 반드시 출석 체크를 완료한 후 방과후 교실로 이동해 주시기 바랍니다. 원활한 운영을 위해 협조 부탁드립니다. 감사합니다.`
-
-        return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="bg-blue-500 text-white p-4 flex items-center justify-between flex-shrink-0">
-                <h2 className="text-lg font-bold">결석자 알림 발송</h2>
-                <button
-                  onClick={() => {
-                    setShowSmsModal(false)
-                    setSmsMessage(null)
-                  }}
-                  className="text-white/80 hover:text-white text-2xl leading-none"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="p-4 overflow-y-auto flex-1">
-                <div className="mb-4 text-center">
-                  <div className="text-sm text-gray-500">선택된 날짜</div>
-                  <div className="font-bold">
-                    {new Date(date + 'T00:00:00').toLocaleDateString('ko-KR', {
-                      year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
-                    })}
-                  </div>
-                </div>
-
-                {smsMessage && (
-                  <div className="mb-4 p-3 rounded-lg text-sm bg-green-50 text-green-700 text-center">
-                    {smsMessage}
-                  </div>
-                )}
-
-                {/* 사전결석자 제외 체크박스 */}
-                <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={excludePreAbsence}
-                      onChange={(e) => setExcludePreAbsence(e.target.checked)}
-                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
-                    />
-                    <span className="text-sm text-amber-800">사전결석 신청자 제외</span>
-                    {excludePreAbsence && (
-                      <span className="text-xs text-amber-600">
-                        (통학 {commuteAbsent.filter(s => s.isPreAbsence).length}명, 기숙 {dormNoOvernightAbsent.filter(s => s.isPreAbsence).length}명 제외)
-                      </span>
-                    )}
-                  </label>
-                </div>
-
-                {/* 카테고리 1: 통학생 */}
-                <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <span className="font-bold text-blue-700">1. 통학생</span>
-                      <span className="ml-2 text-sm text-blue-600">({filteredCommute.length}명)</span>
-                    </div>
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">학생+학부모 / 앱 또는 문자</span>
-                  </div>
-                  {filteredCommute.length > 0 ? (
-                    <>
-                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                        {filteredCommute.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => copyToClipboard(filteredCommute.map(s => s.studentId), '통학생')}
-                          className="flex-1 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600"
-                        >
-                          학번 복사 ({filteredCommute.length}명)
-                        </button>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(MSG_COMMUTE)}
-                          className="px-3 py-2 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200"
-                        >
-                          문구 복사
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
-                  )}
-                </div>
-
-                {/* 카테고리 2: 기숙사 + 외박신청 */}
-                <div className="mb-4 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <span className="font-bold text-indigo-700">2. 기숙사 (외박 신청)</span>
-                      <span className="ml-2 text-sm text-indigo-600">({dormOvernightAbsent.length}명)</span>
-                    </div>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">학부모만 / 문자만</span>
-                  </div>
-                  {dormOvernightAbsent.length > 0 ? (
-                    <>
-                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                        {dormOvernightAbsent.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => copyToClipboard(dormOvernightAbsent.map(s => s.studentId), '기숙(외박)')}
-                          className="flex-1 py-2 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600"
-                        >
-                          학번 복사 ({dormOvernightAbsent.length}명)
-                        </button>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(MSG_DORM_OVERNIGHT)}
-                          className="px-3 py-2 bg-indigo-100 text-indigo-700 text-sm rounded-lg hover:bg-indigo-200"
-                        >
-                          문구 복사
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
-                  )}
-                </div>
-
-                {/* 카테고리 3: 기숙사 + 외박X */}
-                <div className="mb-4 p-3 bg-purple-50 rounded-xl border border-purple-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <span className="font-bold text-purple-700">3. 기숙사 (외박 미신청)</span>
-                      <span className="ml-2 text-sm text-purple-600">({filteredDormNoOvernight.length}명)</span>
-                    </div>
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">학생만 / 앱 또는 문자</span>
-                  </div>
-                  {filteredDormNoOvernight.length > 0 ? (
-                    <>
-                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                        {filteredDormNoOvernight.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => copyToClipboard(filteredDormNoOvernight.map(s => s.studentId), '기숙(외박X)')}
-                          className="flex-1 py-2 bg-purple-500 text-white text-sm font-medium rounded-lg hover:bg-purple-600"
-                        >
-                          학번 복사 ({filteredDormNoOvernight.length}명)
-                        </button>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(MSG_DORM_NO_OVERNIGHT)}
-                          className="px-3 py-2 bg-purple-100 text-purple-700 text-sm rounded-lg hover:bg-purple-200"
-                        >
-                          문구 복사
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
-                  )}
-                </div>
-
-              </div>
-
-              <div className="p-4 border-t flex-shrink-0">
-                <button
-                  onClick={() => {
-                    setShowSmsModal(false)
-                    setSmsMessage(null)
-                  }}
-                  className="w-full py-2 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-colors"
-                >
-                  닫기
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* 특이사항 학생 모달 */}
       {showNotesModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col">

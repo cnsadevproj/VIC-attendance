@@ -13,22 +13,18 @@ interface AttendanceRecord {
 }
 
 interface AttendanceState {
-  // Current context
   zoneId: string | null
   date: string
   timeSlot: TimeSlotType
 
-  // Data
-  students: Map<string, Student>  // seatId -> Student
-  records: Map<string, AttendanceRecord>  // studentId -> record
+  students: Map<string, Student>
+  records: Map<string, AttendanceRecord>
 
-  // UI State
   isLoading: boolean
   isSaving: boolean
   hasChanges: boolean
   error: string | null
 
-  // Actions
   setZone: (zoneId: string) => void
   setDate: (date: string) => void
   setTimeSlot: (timeSlot: TimeSlotType) => void
@@ -41,7 +37,6 @@ interface AttendanceState {
 }
 
 export const useAttendanceStore = create<AttendanceState>((set, get) => ({
-  // Initial state
   zoneId: null,
   date: new Date().toISOString().split('T')[0],
   timeSlot: 'ET',
@@ -74,13 +69,10 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     set({ isLoading: true, error: null })
 
     try {
-      // Load students for this zone
       const studentMap = await studentService.getStudentsBySeatMap(zoneId)
 
-      // Load existing attendance records
       const existingRecords = await attendanceService.getByZoneAndDate(zoneId, date, timeSlot)
 
-      // Convert to our record format
       const records = new Map<string, AttendanceRecord>()
       existingRecords.forEach((record) => {
         records.set(record.student_id, {
@@ -105,7 +97,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       const newRecords = new Map(state.records)
       const current = newRecords.get(studentId)
 
-      // Toggle between present and absent
       const newStatus: AttendanceStatus = current?.status === 'present' ? 'absent' : 'present'
 
       newRecords.set(studentId, {
@@ -137,7 +128,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     set((state) => {
       const newRecords = new Map(state.records)
 
-      // Mark all students as present
       state.students.forEach((student) => {
         const existing = newRecords.get(student.id)
         if (!existing || existing.status !== 'present') {
@@ -161,7 +151,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     set({ isSaving: true, error: null })
 
     try {
-      // Get only modified records
       const modifiedRecords = Array.from(records.values())
         .filter((r) => r.isModified)
         .map((r) => ({
@@ -174,7 +163,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         await attendanceService.batchUpsert(modifiedRecords, date, timeSlot)
       }
 
-      // Mark all as not modified
       set((state) => {
         const newRecords = new Map(state.records)
         newRecords.forEach((record, key) => {
@@ -201,7 +189,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
   },
 }))
 
-// Selectors
 export const selectSummary = (state: AttendanceState) => {
   const summary = {
     present: 0,

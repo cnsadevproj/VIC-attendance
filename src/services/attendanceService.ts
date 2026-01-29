@@ -11,7 +11,6 @@ export interface AttendanceRecord {
 }
 
 export const attendanceService = {
-  // Get attendance for a zone on a specific date and time slot
   async getByZoneAndDate(
     zoneId: string,
     date: string,
@@ -31,7 +30,6 @@ export const attendanceService = {
     return data || []
   },
 
-  // Get attendance for a student
   async getByStudent(
     studentId: string,
     startDate?: string,
@@ -56,7 +54,6 @@ export const attendanceService = {
     return data || []
   },
 
-  // Create or update attendance (upsert)
   async upsert(
     studentId: string,
     date: string,
@@ -86,7 +83,6 @@ export const attendanceService = {
     return data
   },
 
-  // Batch upsert attendance records
   async batchUpsert(
     records: AttendanceRecord[],
     date: string,
@@ -113,7 +109,6 @@ export const attendanceService = {
     return data || []
   },
 
-  // Mark all students in a zone as present
   async markAllPresent(
     studentIds: string[],
     date: string,
@@ -127,13 +122,11 @@ export const attendanceService = {
     return this.batchUpsert(records, date, timeSlot, checkedBy)
   },
 
-  // Get today's date in YYYY-MM-DD format
   getTodayDate(): string {
     const now = new Date()
     return now.toISOString().split('T')[0]
   },
 
-  // Get attendance summary for admin dashboard
   async getSummaryByDate(date: string): Promise<Database['public']['Views']['attendance_summary']['Row'][]> {
     const { data, error } = await supabase
       .from('attendance_summary')
@@ -144,7 +137,6 @@ export const attendanceService = {
     return data || []
   },
 
-  // Get staff completion status
   async getStaffCompletion(date: string): Promise<Database['public']['Views']['staff_completion']['Row'][]> {
     const { data, error } = await supabase
       .from('staff_completion')
@@ -155,7 +147,6 @@ export const attendanceService = {
     return data || []
   },
 
-  // Get attendance map for quick lookup (studentId -> record)
   async getAttendanceMap(
     zoneId: string,
     date: string,

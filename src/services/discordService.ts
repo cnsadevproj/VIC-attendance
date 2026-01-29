@@ -1,4 +1,3 @@
-// Discord 알림 서비스 (브라우저에서 직접 전송 - 서버 불필요)
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1414838907299692626/JFA44m5Pf_iw3BILrS1rgY9vs0Mg_ajZDrMODKtScpjqmyz3znEFxr7hXbOPoKYGilig'
 
 export interface AbsentStudentForDiscord {
@@ -20,7 +19,6 @@ export interface DiscordReportResult {
   error?: string
 }
 
-// Canvas → Blob 변환
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => {
@@ -30,7 +28,6 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   })
 }
 
-// 브라우저 Canvas API로 테이블을 PNG로 렌더링
 async function renderTablePng(
   title: string,
   headers: string[],
@@ -45,7 +42,6 @@ async function renderTablePng(
   const boldFont = `bold ${fontSize}px "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif`
   const titleFont = `bold ${titleFontSize}px "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif`
 
-  // Column width 계산
   const allRows = [headers, ...rows]
   const colCount = headers.length
   const colWidths = new Array(colCount).fill(0)
@@ -68,7 +64,6 @@ async function renderTablePng(
   const totalWidth = Math.ceil(colWidths.reduce((s, w) => s + w, 0)) + 2
   const totalHeight = Math.ceil(titleHeight + rowHeight * allRows.length) + 2
 
-  // 실제 캔버스 생성 (2x DPR for sharp rendering)
   const dpr = 2
   const canvas = document.createElement('canvas')
   canvas.width = totalWidth * dpr
@@ -76,13 +71,11 @@ async function renderTablePng(
   const ctx = canvas.getContext('2d')!
   ctx.scale(dpr, dpr)
 
-  // 흰색 배경
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, totalWidth, totalHeight)
 
   let y = 1
 
-  // 타이틀 행
   ctx.fillStyle = '#374151'
   ctx.fillRect(1, y, totalWidth - 2, titleHeight)
   ctx.strokeStyle = borderColor
@@ -95,7 +88,6 @@ async function renderTablePng(
   ctx.fillText(title, totalWidth / 2, y + titleHeight / 2)
   y += titleHeight
 
-  // 데이터 행
   for (let rowIdx = 0; rowIdx < allRows.length; rowIdx++) {
     const row = allRows[rowIdx]
     const isHeader = rowIdx === 0
@@ -106,7 +98,6 @@ async function renderTablePng(
       const cellHeight = Math.ceil(rowHeight)
       const text = String(row[colIdx] || '')
 
-      // 배경색
       let bgColor: string
       if (isHeader) {
         bgColor = '#3d4777'
@@ -126,7 +117,6 @@ async function renderTablePng(
       ctx.lineWidth = 1
       ctx.strokeRect(x, y, cellWidth, cellHeight)
 
-      // 텍스트
       ctx.fillStyle = isHeader ? '#ffffff' : '#111111'
       ctx.font = isHeader ? boldFont : font
       ctx.textAlign = 'center'
@@ -141,7 +131,6 @@ async function renderTablePng(
   return canvasToBlob(canvas)
 }
 
-// Discord로 출결 리포트 전송 (브라우저 → Discord webhook 직접 호출)
 export async function sendDiscordReport(params: DiscordReportParams): Promise<DiscordReportResult> {
   const { message, displayDate, absentStudents } = params
 
@@ -158,14 +147,12 @@ export async function sendDiscordReport(params: DiscordReportParams): Promise<Di
     const formData = new FormData()
 
     if (rows.length > 0) {
-      // 테이블 PNG 렌더링
       const title = `VIC 조간면학 출결현황 - ${displayDate}`
       const pngBlob = await renderTablePng(title, headers, rows, grade1.length)
 
       formData.append('payload_json', JSON.stringify({ content: message }))
       formData.append('files[0]', pngBlob, 'attendance_report.png')
     } else {
-      // 결석자 없으면 텍스트만
       formData.append('payload_json', JSON.stringify({ content: message }))
     }
 
@@ -175,7 +162,6 @@ export async function sendDiscordReport(params: DiscordReportParams): Promise<Di
       body: formData
     })
 
-    // no-cors: 응답을 읽을 수 없으므로 성공으로 간주
     return { success: true, message: 'Discord 전송 요청 완료' }
   } catch (error) {
     return {
