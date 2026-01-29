@@ -7,7 +7,6 @@
 | 서비스 | URL |
 |--------|-----|
 | **웹 애플리케이션** | https://vic-attendance.web.app |
-| **SMS 서버** | Google Cloud Run |
 
 ---
 
@@ -17,18 +16,27 @@
 - 태블릿/모바일에서 좌석 배치도 기반 터치 출결
 - 구역별 출결 입력 (4층 A~D, 3층 A~D)
 - 출석/결석 한 번 터치로 전환
-- 사전결석 학생 자동 표시
+- 사전결석/외박 학생 자동 표시 (보라색 뱃지)
+- 핀치 줌 지원
 
 ### 2. 관리자 대시보드 (`/admin`)
 - 전체 출결 현황 실시간 조회
 - 구역별/학년별 통계
 - 결석자 목록 Google Sheets 내보내기
-- **결석자 SMS 자동 발송**
+- **결석자 Discord 리포트 발송** (PNG 테이블 이미지)
+- 일일 특이사항(공지) 관리
+- 버그 리포트 관리
 
-### 3. SMS 자동 발송
-- 리로스쿨 연동 자동 문자 발송
-- 테스트 모드 (2026-01-07 이전): 담당 선생님에게만 발송
-- 실제 모드 (2026-01-07 이후): 결석 학생 본인 + 학부모에게 발송
+### 3. Discord 리포트
+- 결석자 명단을 Google Sheet와 동일한 구조의 PNG 테이블로 렌더링
+- 1학년/2학년 좌우 병렬 배치, 순번/좌석번호/이름/비고 컬럼
+- 특이사항 섹션 포함
+- Discord Webhook으로 자동 전송
+
+### 4. PWA 지원
+- 모바일 홈 화면 설치 가능
+- 오프라인 대응 (Service Worker)
+- 세로 고정, 전체 화면 모드
 
 ---
 
@@ -45,7 +53,7 @@
 1. https://vic-attendance.web.app/admin 접속
 2. 비밀번호 입력
 3. 전체 현황 확인
-4. 결석자 내보내기 또는 SMS 발송
+4. 결석자 Google Sheets 내보내기 또는 Discord 리포트 발송
 
 ---
 
@@ -54,12 +62,12 @@
 | 구분 | 기술 |
 |------|------|
 | **Frontend** | React 18 + TypeScript + Vite |
+| **상태관리** | Zustand |
 | **스타일링** | Tailwind CSS |
+| **DB / 실시간** | Supabase (PostgreSQL + Realtime) |
 | **호스팅** | Firebase Hosting |
-| **SMS 서버** | Node.js + Express + Playwright |
-| **SMS 서버 호스팅** | Google Cloud Run |
-| **SMS 자동화** | Playwright (브라우저 자동화) |
 | **스프레드시트** | Google Apps Script 연동 |
+| **리포트** | Discord Webhook + Canvas PNG |
 
 ---
 
@@ -67,18 +75,34 @@
 
 ```
 VIC_attendance/
-├── src/                    # React 소스 코드
+├── src/
 │   ├── components/         # 재사용 컴포넌트
+│   │   ├── layout/         # Header 등 레이아웃
+│   │   ├── seatmap/        # 좌석 배치도 (Seat, SeatMap)
+│   │   └── attendance/     # 출결 요약, 교시 선택
 │   ├── pages/              # 페이지 컴포넌트
-│   ├── config/             # 설정 (좌석배치, 학생정보)
+│   │   ├── HomePage.tsx    # 구역 선택 대시보드
+│   │   ├── AttendancePage.tsx  # 출결 입력
+│   │   ├── AdminDashboard.tsx  # 관리자 대시보드
+│   │   ├── LoginPage.tsx   # 로그인
+│   │   └── LandingPage.tsx # 랜딩
+│   ├── config/             # 좌석배치, 학생정보, 근무일정
 │   ├── services/           # API 서비스
-│   └── types/              # TypeScript 타입
-├── sms-server/             # SMS 발송 서버 (Cloud Run)
-│   ├── server.js           # Express 서버
-│   ├── Dockerfile          # Cloud Run 배포용
-│   └── package.json
+│   │   ├── attendanceService.ts    # 출결 CRUD
+│   │   ├── zoneAttendanceService.ts # 구역별 실시간 출결
+│   │   ├── studentService.ts       # 학생 데이터
+│   │   ├── absenceService.ts       # 사전결석/외박
+│   │   ├── authService.ts          # 인증
+│   │   ├── googleSheets.ts         # 스프레드시트 내보내기
+│   │   ├── discordService.ts       # Discord 리포트
+│   │   ├── noticeService.ts        # 일일 공지
+│   │   └── zoneService.ts          # 구역 설정
+│   ├── stores/             # Zustand 상태 저장소
+│   ├── hooks/              # 커스텀 훅 (usePreAbsences 등)
+│   ├── types/              # TypeScript 타입
+│   └── utils/              # 유틸리티 (날짜 등)
 ├── google-apps-script/     # Google Sheets 연동 스크립트
-├── public/                 # 정적 파일
+├── public/                 # 정적 파일 (아이콘, manifest)
 └── dist/                   # 빌드 결과물
 ```
 
@@ -107,22 +131,6 @@ npm run build
 
 # Firebase 배포
 firebase deploy --only hosting
-```
-
----
-
-## SMS 서버 배포 (Cloud Run)
-
-```bash
-cd sms-server
-
-# Cloud Run 배포
-gcloud run deploy vic-sms-server \
-  --source . \
-  --platform managed \
-  --region asia-northeast3 \
-  --allow-unauthenticated \
-  --set-env-vars "CNSA_ID=계정아이디,CNSA_PW=비밀번호"
 ```
 
 ---
