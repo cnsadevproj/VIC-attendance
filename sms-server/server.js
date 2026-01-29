@@ -1,7 +1,36 @@
 const express = require('express');
 const cors = require('cors');
 const { chromium } = require('playwright');
+const { createCanvas, registerFont } = require('canvas');
+const path = require('path');
 require('dotenv').config();
+
+// Register Korean font (fonts-noto-cjk installed via Dockerfile)
+// fonts-noto-cjk puts fonts at: /usr/share/fonts/opentype/noto/
+const fs = require('fs');
+const fontPaths = [
+  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+  '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
+  '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+  '/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc'
+];
+
+let fontRegistered = false;
+for (const fontPath of fontPaths) {
+  try {
+    if (fs.existsSync(fontPath)) {
+      registerFont(fontPath, { family: 'Noto Sans CJK' });
+      console.log('Font registered:', fontPath);
+      fontRegistered = true;
+      break;
+    }
+  } catch (e) {
+    console.log('Font registration failed for', fontPath, ':', e.message);
+  }
+}
+if (!fontRegistered) {
+  console.log('No Noto CJK font found, will use system default');
+}
 
 const app = express();
 app.use(cors());
@@ -25,12 +54,12 @@ function isProductionMode() {
   return new Date() >= PRODUCTION_START_DATE;
 }
 
-// Parse student ID: 10823 -> { grade: 1, class: '108', number: 23 }
+// Parse student ID: 11207 -> { grade: 1, class: '112', number: '07' }
 function parseStudentId(studentId) {
   const idStr = studentId.toString().padStart(5, '0');
   const grade = parseInt(idStr[0]);
-  const classNum = idStr.substring(0, 3); // e.g., '108'
-  const number = parseInt(idStr.substring(3)); // e.g., 23
+  const classNum = idStr.substring(0, 3); // e.g., '112'
+  const number = idStr.substring(3); // e.g., '07' (문자열 유지, 앞의 0 보존)
   return { grade, classNum, number };
 }
 
@@ -960,90 +989,158 @@ async function sendAbsentSMS(absentStudents, recipientType = 'student_and_parent
     // Login
     await loginToRiroschool(page);
 
-    // Navigate to SMS page
-    await page.goto('https://cnsa.riroschool.kr/sms.php?action=send', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // Navigate to SMS page (like test code)
+    console.log('Navigating to SMS page...');
+    await page.goto('https://cnsa.riroschool.kr/sms.php', { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(3000);
-    console.log('Navigated to SMS page');
+    console.log('Current URL:', page.url());
+
+    // Click 주소록 tab to activate address book (like test code)
+    console.log('Clicking on 주소록 tab...');
+    try {
+      const addressBookTab = page.locator('text=주소록').first();
+      if (await addressBookTab.isVisible()) {
+        await addressBookTab.click();
+        console.log('주소록 tab clicked');
+        await page.waitForTimeout(2000);
+      }
+    } catch (e) {
+      console.log('주소록 tab click error:', e.message);
+    }
+
+    // Wait for address book to load (like test code)
+    console.log('Waiting for address book list...');
+    try {
+      await page.waitForFunction(() => {
+        return document.querySelectorAll('input[type="checkbox"]').length > 5;
+      }, { timeout: 15000 });
+      const checkboxCount = await page.evaluate(() => document.querySelectorAll('input[type="checkbox"]').length);
+      console.log('Address book loaded, checkbox count:', checkboxCount);
+    } catch (e) {
+      console.log('Timeout waiting for address book:', e.message);
+    }
 
     for (const student of absentStudents) {
       try {
         const { grade, classNum, number } = parseStudentId(student.studentId);
+        console.log(`\n========================================`);
         console.log(`Processing student: ${student.name} (${grade}학년 ${classNum}반 ${number}번)`);
+        console.log(`========================================`);
 
-        // Clear previous selections
-        await page.evaluate(() => {
-          const checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
-          checkboxes.forEach(cb => cb.click());
-        });
-        await page.waitForTimeout(500);
+        // Reload SMS page for each student to ensure clean state
+        await page.goto('https://cnsa.riroschool.kr/sms.php', { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.waitForTimeout(2000);
 
-        // Click 학생 directory
-        await page.evaluate(() => {
-          const items = document.querySelectorAll('li');
-          for (const item of items) {
-            const text = item.textContent || '';
-            if (text.includes('학생') && !text.includes('학생(본인)')) {
-              item.click();
-              break;
+        // Click 주소록 tab
+        try {
+          const addressBookTab = page.locator('text=주소록').first();
+          if (await addressBookTab.isVisible()) {
+            await addressBookTab.click();
+            await page.waitForTimeout(2000);
+          }
+        } catch (e) {
+          console.log('주소록 tab error:', e.message);
+        }
+
+        // Step 1: Find and click grade (학년) in address book
+        // Address book structure: 1학년, 2학년, 3학년, ...
+        console.log(`Opening ${grade}학년 directory...`);
+
+        let gradeClicked = await page.evaluate((g) => {
+          const allLis = Array.from(document.querySelectorAll('li'));
+          for (const li of allLis) {
+            const checkbox = li.querySelector('input[type="checkbox"]');
+            if (!checkbox) continue;
+            const text = li.textContent || '';
+            // Match exactly "1학년", "2학년" etc at the start
+            if (text.match(new RegExp(`^${g}학년`))) {
+              console.log('Found grade li:', text.substring(0, 30));
+              li.click();
+              return true;
             }
           }
-        });
-        await page.waitForTimeout(800);
-
-        // Click grade (학년)
-        await page.evaluate((g) => {
-          const items = document.querySelectorAll('li');
-          for (const item of items) {
-            if (item.textContent.includes(`${g}학년`)) {
-              item.click();
-              break;
-            }
-          }
+          return false;
         }, grade);
-        await page.waitForTimeout(800);
 
-        // Click class (반) - classNum is like '108', need to show as '108반'
-        await page.evaluate((c) => {
-          const items = document.querySelectorAll('li');
-          for (const item of items) {
-            if (item.textContent.includes(`${c}반`)) {
-              item.click();
-              break;
+        if (!gradeClicked) {
+          // Try with locator
+          try {
+            const gradeLi = page.locator(`li:has(input[type="checkbox"])`).filter({ hasText: new RegExp(`^${grade}학년`) });
+            if (await gradeLi.count() > 0) {
+              await gradeLi.first().click();
+              gradeClicked = true;
+            }
+          } catch (e) {
+            console.log('Grade locator failed:', e.message);
+          }
+        }
+        console.log(`${grade}학년 clicked:`, gradeClicked);
+        await page.waitForTimeout(1000);
+
+        // Step 2: Wait for class list to appear and click class (반)
+        console.log(`Opening ${classNum}반 directory...`);
+        try {
+          await page.waitForSelector(`text=${classNum}반`, { timeout: 10000 });
+          console.log(`${classNum}반 appeared in DOM`);
+        } catch (e) {
+          console.log(`${classNum}반 did not appear`);
+        }
+
+        let classClicked = await page.evaluate((c) => {
+          const allLis = Array.from(document.querySelectorAll('li'));
+          for (const li of allLis) {
+            const text = li.textContent || '';
+            if (text.includes(`${c}반`)) {
+              console.log('Found class li:', text.substring(0, 30));
+              li.click();
+              return true;
             }
           }
+          return false;
         }, classNum);
-        await page.waitForTimeout(800);
 
-        // Find student by number and name
+        if (!classClicked) {
+          try {
+            await page.locator(`text=${classNum}반`).first().click();
+            classClicked = true;
+          } catch (e) {
+            console.log('Class click failed:', e.message);
+          }
+        }
+        console.log(`${classNum}반 clicked:`, classClicked);
+        await page.waitForTimeout(1000);
+
+        // Step 3: Find and select student by number and name
+        // Format in address book: "07.홍길동" or similar
+        console.log(`Finding student: ${number}.${student.name}...`);
+
         let studentFound = false;
-        for (let i = 0; i < 10; i++) {
-          studentFound = await page.evaluate((num, name) => {
-            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-            while (walker.nextNode()) {
-              const text = walker.currentNode.textContent;
-              if (text.includes(name) || text.includes(`${num}번`)) {
-                const parent = walker.currentNode.parentElement;
-                const listItem = parent.closest('li');
-                if (listItem) {
-                  const checkbox = listItem.querySelector('input[type="checkbox"]');
-                  if (checkbox) {
-                    checkbox.click();
-                    return true;
-                  }
+        for (let attempt = 0; attempt < 5; attempt++) {
+          studentFound = await page.evaluate(({ num, name }) => {
+            const allLis = Array.from(document.querySelectorAll('li'));
+            for (const li of allLis) {
+              const text = li.textContent || '';
+              // Match patterns like "07.홍길동" or just the name
+              if (text.includes(`${num}.${name}`) || text.includes(name)) {
+                const checkbox = li.querySelector('input[type="checkbox"]');
+                if (checkbox && !checkbox.checked) {
+                  checkbox.click();
+                  console.log('Student checkbox clicked:', text.substring(0, 30));
+                  return true;
                 }
               }
             }
             return false;
-          }, number, student.name);
+          }, { num: number, name: student.name });
 
           if (studentFound) break;
 
-          // Scroll
+          // Scroll and retry
           await page.evaluate(() => {
             const lists = document.querySelectorAll('ul');
             for (const list of lists) {
               if (list.scrollHeight > list.clientHeight) {
-                list.scrollTop += 300;
+                list.scrollTop += 200;
               }
             }
           });
@@ -1051,112 +1148,207 @@ async function sendAbsentSMS(absentStudents, recipientType = 'student_and_parent
         }
 
         if (!studentFound) {
-          console.log(`Student ${student.name} not found`);
+          console.log(`Student ${student.name} not found in address book`);
           results.push({ student: student.name, status: 'error', message: 'Student not found' });
           continue;
         }
+        console.log(`Student ${student.name} selected`);
+        await page.waitForTimeout(500);
 
-        // Select recipients based on recipientType
+        // Step 4: Select recipient type in .recip_type area (like test code)
+        console.log(`Selecting recipient type: ${recipientType}...`);
+
+        // Debug: Check recipient checkboxes
+        const recipientDebug = await page.evaluate(() => {
+          const recipTypeDiv = document.querySelector('.recip_type');
+          const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+          const recipientCheckboxes = [];
+          for (const cb of checkboxes) {
+            if (cb.id?.startsWith('to_') || cb.name?.startsWith('to_')) {
+              recipientCheckboxes.push({
+                id: cb.id,
+                name: cb.name,
+                checked: cb.checked
+              });
+            }
+          }
+          return { hasRecipTypeDiv: !!recipTypeDiv, recipientCheckboxes };
+        });
+        console.log('Recipient debug:', JSON.stringify(recipientDebug));
+
+        // Select recipients based on type (using .recip_type like test code)
         await page.evaluate((recType) => {
-          const labels = document.querySelectorAll('label');
+          const recipTypeDiv = document.querySelector('.recip_type');
+          if (!recipTypeDiv) {
+            console.log('recip_type div not found, trying fallback');
+            return;
+          }
+
+          const labels = recipTypeDiv.querySelectorAll('label.check');
           for (const label of labels) {
-            const text = label.textContent || '';
+            const txtSpan = label.querySelector('span.txt');
+            const text = txtSpan?.textContent || label.textContent || '';
             let shouldSelect = false;
 
             if (recType === 'student_and_parent') {
-              // 학생(본인) + 어머니
               shouldSelect = text.includes('학생(본인)') || text.includes('어머니');
             } else if (recType === 'parent_only') {
-              // 어머니만
               shouldSelect = text.includes('어머니');
             } else if (recType === 'student_only') {
-              // 학생(본인)만
               shouldSelect = text.includes('학생(본인)');
             }
 
             if (shouldSelect) {
-              const checkbox = label.querySelector('input[type="checkbox"]') ||
-                              document.getElementById(label.getAttribute('for'));
+              const checkbox = label.querySelector('input[type="checkbox"]');
               if (checkbox && !checkbox.checked) {
-                checkbox.click();
+                label.click();
+                checkbox.checked = true;
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log('Selected recipient:', text);
               }
             }
           }
         }, recipientType);
         await page.waitForTimeout(500);
 
-        // Enter title if available
+        // Step 5: Enter title (using btitle like test code)
+        console.log('Entering title...');
         await page.evaluate((title) => {
-          const titleInput = document.querySelector('input[name="title"], input[placeholder*="제목"]');
+          const titleInput = document.querySelector('input[name="btitle"]');
           if (titleInput) {
             titleInput.value = title;
             titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+            console.log('Title entered:', title);
+          } else {
+            console.log('btitle input not found');
           }
         }, SMS_TITLE);
+        await page.waitForTimeout(300);
 
-        // Enter message
-        await page.evaluate((msg) => {
-          const textarea = document.querySelector('textarea');
-          if (textarea) {
-            textarea.value = msg;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }, SMS_MESSAGE);
+        // Step 6: Enter message (like test code)
+        console.log('Entering message...');
+        const messageBox = page.getByRole('textbox', { name: /메시지를 입력/ });
+        if (await messageBox.count() > 0) {
+          await messageBox.fill(SMS_MESSAGE);
+        } else {
+          await page.evaluate((msg) => {
+            const textarea = document.querySelector('textarea');
+            if (textarea) {
+              textarea.value = msg;
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }, SMS_MESSAGE);
+        }
         await page.waitForTimeout(500);
 
-        // Select 모두 문자
+        // Step 7: Select SMS type - 모두 문자 (like test code)
+        console.log('Selecting SMS type (모두 문자)...');
         await page.evaluate(() => {
+          const radios = document.querySelectorAll('input[type="radio"][name="sms_chk"]');
+          for (const radio of radios) {
+            const label = radio.parentElement?.textContent?.trim() || '';
+            if (label.includes('모두 문자') || radio.value === 'allsms' || radio.id === 'allsms') {
+              radio.checked = true;
+              radio.click();
+              radio.dispatchEvent(new Event('change', { bubbles: true }));
+              console.log('Selected SMS type:', label);
+              return true;
+            }
+          }
           const allSmsRadio = document.querySelector('#allsms');
-          if (allSmsRadio) allSmsRadio.click();
+          if (allSmsRadio) {
+            allSmsRadio.checked = true;
+            allSmsRadio.click();
+          }
         });
         await page.waitForTimeout(500);
 
-        // Enter password
+        // Step 8: Enter password (like test code - using evaluate)
+        console.log('Entering password...');
         await page.evaluate((pw) => {
-          const pwInput = document.querySelector('input[type="password"]');
-          if (pwInput) {
-            pwInput.value = pw;
-            pwInput.dispatchEvent(new Event('input', { bubbles: true }));
+          const input = document.querySelector('input[name="admin_pass"]');
+          if (input) {
+            input.value = '';
+            input.value = pw;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log('Password set via admin_pass');
+          } else {
+            const altInput = document.querySelector('input[type="password"]');
+            if (altInput) {
+              altInput.value = pw;
+              altInput.dispatchEvent(new Event('input', { bubbles: true }));
+              altInput.dispatchEvent(new Event('change', { bubbles: true }));
+              console.log('Password set via type="password"');
+            }
           }
         }, CNSA_PW);
         await page.waitForTimeout(500);
 
-        // Click send button and handle confirmation dialog
-        let dialogHandled = false;
-        const dialogPromise = new Promise((resolve) => {
-          const handler = async (dialog) => {
-            console.log(`Dialog for ${student.name}:`, dialog.message());
-            await dialog.accept();
-            dialogHandled = true;
-            resolve(true);
-          };
-          page.once('dialog', handler);
-          setTimeout(() => {
-            if (!dialogHandled) resolve(false);
-          }, 10000);
+        // Step 9: Set up dialog handling for multiple dialogs (like test code)
+        let dialogCount = 0;
+        let dialogMessages = [];
+
+        page.on('dialog', async (dialog) => {
+          dialogCount++;
+          const msg = dialog.message();
+          dialogMessages.push(msg);
+          console.log(`Dialog #${dialogCount} for ${student.name}:`, msg);
+          await dialog.accept();
+          console.log(`Dialog #${dialogCount} accepted`);
         });
 
-        await page.evaluate(() => {
-          const buttons = document.querySelectorAll('button, input[type="button"], input[type="submit"]');
-          for (const btn of buttons) {
-            if (btn.textContent?.includes('발송') || btn.value?.includes('발송')) {
-              btn.click();
-              return;
+        // Step 10: Click send button (like test code)
+        console.log('Clicking send button...');
+        try {
+          await page.getByRole('button', { name: '메시지 발송' }).click();
+          console.log('Send button clicked via role');
+        } catch (e) {
+          console.log('Role-based button click failed, trying fallback...');
+          await page.evaluate(() => {
+            const buttons = document.querySelectorAll('button');
+            for (const btn of buttons) {
+              if (btn.textContent?.includes('발송')) {
+                btn.click();
+                return;
+              }
             }
-          }
-        });
+          });
+        }
 
-        // Wait for dialog to be handled
-        const wasDialogHandled = await dialogPromise;
-        console.log(`Dialog handled for ${student.name}:`, wasDialogHandled);
+        // Wait for dialogs to be handled
+        console.log('Waiting for confirmation dialogs...');
+        await page.waitForTimeout(5000);
+
+        console.log(`Dialogs handled: ${dialogCount}, messages: ${dialogMessages.join(' | ')}`);
+
+        // Wait for form submission
         await page.waitForTimeout(3000);
 
-        console.log(`SMS sent to ${student.name}`);
-        results.push({ student: student.name, status: 'success', message: 'SMS sent to 학생 + 어머니', dialogHandled: wasDialogHandled });
+        // Check result
+        const result = await page.evaluate(() => {
+          const bodyText = document.body.innerText;
+          return {
+            hasSuccess: bodyText.includes('발송 완료') || bodyText.includes('성공'),
+            hasError: bodyText.includes('실패') || bodyText.includes('오류')
+          };
+        });
+
+        console.log(`SMS sent to ${student.name}, dialogs: ${dialogCount}`);
+        results.push({
+          student: student.name,
+          status: dialogCount > 0 ? 'success' : 'unknown',
+          message: `Dialogs: ${dialogMessages.join(' | ')}`,
+          dialogCount
+        });
+
+        // Remove dialog listener for next student
+        page.removeAllListeners('dialog');
 
       } catch (err) {
         console.error(`Error sending SMS to ${student.name}:`, err.message);
         results.push({ student: student.name, status: 'error', message: err.message });
+        page.removeAllListeners('dialog');
       }
     }
 
@@ -1407,6 +1599,193 @@ ${formattedDate} 겨울방학 방과후학교 조간면학 출결현황 보내�
 
   } catch (err) {
     console.error('Discord report error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================
+// PNG Table Rendering Functions
+// =====================================================
+
+// Convert Google Sheets color format to CSS RGB
+function googleColorToRgb(colorObj) {
+  if (!colorObj) return { r: 255, g: 255, b: 255 };
+  const r = Math.round((colorObj.red || 0) * 255);
+  const g = Math.round((colorObj.green || 0) * 255);
+  const b = Math.round((colorObj.blue || 0) * 255);
+  return { r, g, b };
+}
+
+// Check if a color is light (for choosing text color)
+function isLightColor(r, g, b) {
+  return (r * 0.299 + g * 0.587 + b * 0.114) > 150;
+}
+
+// Render table data as PNG image
+function renderTableAsPng(tableData) {
+  const { title, headers, rows, headerColors, rowColors } = tableData;
+
+  console.log('renderTableAsPng called');
+  console.log('Title:', title || '(none)');
+  console.log('Headers:', JSON.stringify(headers));
+  console.log('Rows count:', rows ? rows.length : 0);
+
+  // Configuration
+  const fontSize = 16;
+  const titleFontSize = 18;
+  const padding = { x: 14, y: 10 };
+  const borderWidth = 1;
+  const borderColor = '#999999';
+  const fontFamily = 'sans-serif';
+
+  // Calculate column widths based on content
+  const allRows = [headers, ...rows];
+  const colCount = headers.length;
+  const colWidths = new Array(colCount).fill(0);
+
+  for (const row of allRows) {
+    for (let i = 0; i < colCount; i++) {
+      const text = String(row[i] || '');
+      let textWidth = 0;
+      for (const char of text) {
+        if (char.charCodeAt(0) > 127) {
+          textWidth += fontSize;
+        } else {
+          textWidth += fontSize * 0.6;
+        }
+      }
+      colWidths[i] = Math.max(colWidths[i], textWidth + padding.x * 2);
+    }
+  }
+
+  // Ensure minimum column width
+  for (let i = 0; i < colWidths.length; i++) {
+    colWidths[i] = Math.max(colWidths[i], 50);
+  }
+
+  console.log('Column widths:', colWidths);
+
+  // Calculate total dimensions
+  const rowHeight = fontSize + padding.y * 2;
+  const titleHeight = title ? (titleFontSize + padding.y * 2 + 4) : 0;
+  const totalWidth = Math.ceil(colWidths.reduce((sum, w) => sum + w, 0)) + borderWidth * 2;
+  const totalHeight = Math.ceil(titleHeight + rowHeight * allRows.length) + borderWidth * 2;
+
+  console.log('Canvas size:', totalWidth, 'x', totalHeight);
+
+  // Create actual canvas
+  const canvas = createCanvas(totalWidth, totalHeight);
+  const ctx = canvas.getContext('2d');
+
+  // Fill entire background with white first
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+  let y = borderWidth;
+
+  // Draw title row if provided
+  if (title) {
+    const titleBg = { r: 55, g: 65, b: 81 }; // Dark gray-blue
+    ctx.fillStyle = `rgb(${titleBg.r}, ${titleBg.g}, ${titleBg.b})`;
+    ctx.fillRect(borderWidth, y, totalWidth - borderWidth * 2, titleHeight);
+
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = borderWidth;
+    ctx.strokeRect(borderWidth, y, totalWidth - borderWidth * 2, titleHeight);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${titleFontSize}px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title, totalWidth / 2, y + titleHeight / 2);
+
+    y += titleHeight;
+  }
+
+  // Draw cells
+  for (let rowIdx = 0; rowIdx < allRows.length; rowIdx++) {
+    const row = allRows[rowIdx];
+    const isHeader = rowIdx === 0;
+    const colors = isHeader ? headerColors : (rowColors ? rowColors[rowIdx - 1] : null);
+
+    let x = borderWidth;
+    for (let colIdx = 0; colIdx < colCount; colIdx++) {
+      const cellWidth = Math.ceil(colWidths[colIdx]);
+      const cellHeight = Math.ceil(rowHeight);
+      const text = String(row[colIdx] || '');
+
+      // Get background color - default to white
+      let bgColor = { r: 255, g: 255, b: 255 };
+      if (colors && colors[colIdx]) {
+        bgColor = googleColorToRgb(colors[colIdx]);
+      }
+
+      // Fill cell background
+      ctx.fillStyle = `rgb(${bgColor.r}, ${bgColor.g}, ${bgColor.b})`;
+      ctx.fillRect(x, y, cellWidth, cellHeight);
+
+      // Draw cell border
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = borderWidth;
+      ctx.strokeRect(x, y, cellWidth, cellHeight);
+
+      // Draw text - adaptive color based on background
+      const textColor = isLightColor(bgColor.r, bgColor.g, bgColor.b) ? '#000000' : '#ffffff';
+      ctx.fillStyle = textColor;
+      ctx.font = isHeader ? `bold ${fontSize}px ${fontFamily}` : `${fontSize}px ${fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x + cellWidth / 2, y + cellHeight / 2);
+
+      x += cellWidth;
+    }
+    y += rowHeight;
+  }
+
+  console.log('PNG rendering complete');
+  return canvas.toBuffer('image/png');
+}
+
+// Discord report with PNG endpoint
+app.post('/api/discord-with-png', async (req, res) => {
+  const { message, tableData } = req.body;
+
+  if (!message) {
+    return res.status(400).json({
+      error: 'message is required',
+      example: {
+        message: '출결현황입니다.',
+        tableData: {
+          headers: ['이름', '학번', '상태'],
+          rows: [['홍길동', '10101', '결석']],
+          headerColors: [{ red: 0.9, green: 0.9, blue: 0.9 }],
+          rowColors: [[{ red: 1, green: 1, blue: 1 }]]
+        }
+      }
+    });
+  }
+
+  try {
+    console.log('Processing Discord PNG request...');
+
+    let imageBuffer = null;
+    if (tableData && tableData.headers && tableData.rows) {
+      console.log(`Rendering table: ${tableData.headers.length} columns, ${tableData.rows.length} rows`);
+      imageBuffer = renderTableAsPng(tableData);
+      console.log('PNG rendered, size:', imageBuffer.length, 'bytes');
+    }
+
+    // Send to Discord
+    await sendToDiscord(message, imageBuffer);
+
+    res.json({
+      success: true,
+      message: 'Discord 전송 완료 (PNG 포함)',
+      imageSize: imageBuffer ? imageBuffer.length : 0
+    });
+
+  } catch (err) {
+    console.error('Discord PNG error:', err);
     res.status(500).json({ error: err.message });
   }
 });

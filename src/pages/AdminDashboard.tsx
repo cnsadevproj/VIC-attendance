@@ -6,11 +6,11 @@ import BugReportModal, { type BugReport } from '../components/BugReportModal'
 import { SEAT_LAYOUTS } from '../config/seatLayouts'
 import { fetchTodayStaff, isTemporaryPeriod, type TodayStaff } from '../config/staffSchedule'
 import { exportToClipboard, exportToGoogleSheets, isAppsScriptConfigured, getSheetName, type AbsentStudent, type StudentWithNote } from '../services/googleSheets'
-import { sendCategorySms, type SmsStudent } from '../services/smsService'
 import { sendDiscordReport } from '../services/discordService'
 import { usePreAbsences } from '../hooks/usePreAbsences'
 import { getTodayKST } from '../utils/date'
 import { zoneAttendanceService, type ZoneAttendanceData } from '../services/zoneAttendanceService'
+import { noticeService } from '../services/noticeService'
 import type { AttendanceRecord } from '../types'
 
 interface ZoneSummary {
@@ -79,11 +79,11 @@ const FIXED_STAFF_SCHEDULE: Record<string, { grade1: [string, string], grade2: [
   '2026-01-23': { grade1: ['김솔', '강현수'], grade2: ['이예진', '서률지'] },
   '2026-01-26': { grade1: ['민수정', '김종규'], grade2: ['홍승민', '정수빈'] },
   '2026-01-27': { grade1: ['박한비', '홍선영'], grade2: ['조민경', '노예원'] },
-  '2026-01-28': { grade1: ['이예진', '서률지'], grade2: ['장보경', '김솔'] },
-  '2026-01-29': { grade1: ['노예원', '조현정'], grade2: ['강현수', '민수정'] },
-  '2026-01-30': { grade1: ['김종규', '이건우'], grade2: ['정수빈', '박한비'] },
+  '2026-01-28': { grade1: ['이예진', '서률지'], grade2: ['장보경', '박한비'] },
+  '2026-01-29': { grade1: ['노예원', '김종규'], grade2: ['강현수', '이건우'] },
+  '2026-01-30': { grade1: ['민수정', '조현정'], grade2: ['정수빈', '박한비'] },
   '2026-02-02': { grade1: ['홍승민', '조민경'], grade2: ['서률지', '강현수'] },
-  '2026-02-03': { grade1: ['민수정', '박한비'], grade2: ['정수빈', '이건우'] },
+  '2026-02-03': { grade1: ['민수정', '김솔'], grade2: ['정수빈', '이건우'] },
 }
 
 // 전체 스케줄 (임시 + 정규)
@@ -275,7 +275,6 @@ export default function AdminDashboard() {
   const [isSendingDiscord, setIsSendingDiscord] = useState(false)
   const [showSmsModal, setShowSmsModal] = useState(false)
   const [smsMessage, setSmsMessage] = useState<string | null>(null)
-  const [isSendingSms, setIsSendingSms] = useState(false)
   const [showNotesModal, setShowNotesModal] = useState(false)
   const [excludePreAbsence, setExcludePreAbsence] = useState(false)
 
@@ -496,9 +495,6 @@ export default function AdminDashboard() {
     return record?.status || 'unchecked'
   }
 
-  // 선택한 날짜에 따른 특이사항 키
-  const noticeStorageKey = `admin_notice_${date}`
-
   // 금일 담당자 불러오기
   useEffect(() => {
     fetchTodayStaff().then(setTodayStaff)
@@ -509,29 +505,50 @@ export default function AdminDashboard() {
     sessionStorage.setItem('adminSelectedDate', date)
   }, [date])
 
-  // 선택한 날짜의 특이사항 불러오기
+  // 선택한 날짜의 특이사항 불러오기 (Supabase)
   useEffect(() => {
-    const savedNotice = localStorage.getItem(noticeStorageKey)
-    if (savedNotice) {
-      setNoticeText(savedNotice)
-    } else {
-      // 샘플 특이사항 데이터
-      const sampleNotices: Record<string, string> = {
-        '2025-12-24': '과학경시대회 참가자 불참 예정',
-        '2025-12-25': '크리스마스 - 면학실 단축 운영',
-        '2025-12-26': '정상 운영',
-        '2025-12-27': '겨울방학 시작 전 마지막 면학',
+    const loadNotice = async () => {
+      try {
+        const notice = await noticeService.get(date)
+        setNoticeText(notice)
+      } catch (error) {
+        console.error('[AdminDashboard] Failed to load notice:', error)
+        // fallback to localStorage
+        const savedNotice = localStorage.getItem(`admin_notice_${date}`)
+        setNoticeText(savedNotice || '')
       }
-      setNoticeText(sampleNotices[date] || '')
     }
+    loadNotice()
     setShowNoticeInput(false)
-  }, [date, noticeStorageKey])
 
-  const handleSaveNotice = () => {
-    if (noticeText.trim()) {
-      localStorage.setItem(noticeStorageKey, noticeText.trim())
-    } else {
-      localStorage.removeItem(noticeStorageKey)
+    // 실시간 구독 설정
+    const unsubscribe = noticeService.subscribeToDate(date, (notice) => {
+      setNoticeText(notice)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [date])
+
+  const handleSaveNotice = async () => {
+    try {
+      if (noticeText.trim()) {
+        await noticeService.save(date, noticeText.trim())
+        // localStorage에도 백업 저장
+        localStorage.setItem(`admin_notice_${date}`, noticeText.trim())
+      } else {
+        await noticeService.delete(date)
+        localStorage.removeItem(`admin_notice_${date}`)
+      }
+    } catch (error) {
+      console.error('[AdminDashboard] Failed to save notice:', error)
+      // Supabase 실패 시 localStorage에만 저장
+      if (noticeText.trim()) {
+        localStorage.setItem(`admin_notice_${date}`, noticeText.trim())
+      } else {
+        localStorage.removeItem(`admin_notice_${date}`)
+      }
     }
     setShowNoticeInput(false)
   }
@@ -1100,9 +1117,14 @@ export default function AdminDashboard() {
                 저장
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setNoticeText('')
-                  localStorage.removeItem(noticeStorageKey)
+                  try {
+                    await noticeService.delete(date)
+                  } catch (error) {
+                    console.error('[AdminDashboard] Failed to delete notice:', error)
+                  }
+                  localStorage.removeItem(`admin_notice_${date}`)
                   setShowNoticeInput(false)
                 }}
                 className="px-4 py-1.5 bg-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-300"
@@ -1649,10 +1671,11 @@ export default function AdminDashboard() {
                     const day = dateObj.getDate()
                     const weekday = weekdays[dateObj.getDay()]
                     const totalAbsent = absentStudentsForExport.length
+                    const displayDate = `${month}월 ${day}일(${weekday})`
 
                     // 부장님께 보낼 메시지
                     const reportMessage = `안녕하세요, 이현경 부장님.
-${month}월 ${day}일(${weekday}) 겨울방학 방과후학교 조간면학 출결현황 보내드립니다.
+${displayDate} 겨울방학 방과후학교 조간면학 출결현황 보내드립니다.
 총 ${totalAbsent}명의 학생 및 학부모님께 알림 발송 완료했습니다.
 [VIC 조간면학일지 스프레드시트] https://docs.google.com/spreadsheets/d/1gVFE9dxJ-tl6f4KFqe5z2XDZ2B5mVgzpFAj7s-XrLAs/edit?usp=sharing
 감사합니다.`
@@ -1664,14 +1687,19 @@ ${month}월 ${day}일(${weekday}) 겨울방학 방과후학교 조간면학 출�
                       console.error('클립보드 복사 실패')
                     }
 
-                    // Discord 전송 (Apps Script 경유 - 시트 캡쳐 포함)
+                    // Discord 전송 (SMS Server 경유 - 테이블 PNG 포함)
                     setIsSendingDiscord(true)
                     try {
-                      await sendDiscordReport({
-                        sheetName: getSheetName(date),
-                        message: reportMessage
+                      const result = await sendDiscordReport({
+                        message: reportMessage,
+                        displayDate,
+                        absentStudents: absentStudentsForExport
                       })
-                      setExportMessage('✅ Discord 전송 완료! 메시지가 클립보드에 복사되었습니다.')
+                      if (result.success) {
+                        setExportMessage('✅ Discord 전송 완료! (테이블 이미지 포함) 메시지가 클립보드에 복사되었습니다.')
+                      } else {
+                        setExportMessage(`❌ Discord 전송 실패: ${result.error}`)
+                      }
                     } catch (err) {
                       setExportMessage(`❌ Discord 전송 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`)
                     } finally {
@@ -1884,6 +1912,25 @@ ${month}월 ${day}일(${weekday}) 겨울방학 방과후학교 조간면학 출�
           ? dormNoOvernightAbsent.filter(s => !s.isPreAbsence)
           : dormNoOvernightAbsent
 
+        const copyToClipboard = async (studentIds: string[], label: string) => {
+          const text = studentIds.join('\n')
+          try {
+            await navigator.clipboard.writeText(text)
+            setSmsMessage(`${label} 학번 ${studentIds.length}명 복사됨!`)
+          } catch {
+            setSmsMessage('복사 실패')
+          }
+        }
+
+        const MSG_COMMUTE = `안녕하세요, 충남삼성고입니다.
+본 메시지는 금일 08:30 면학실 출석 확인이 되지 않은 학생을 대상으로 자동 발송됩니다. 출석 확인은 08:30부터 면학실에서 진행되오니, 반드시 출석 체크를 완료한 후 방과후 교실로 이동해 주시기 바랍니다. 원활한 운영을 위해 협조 부탁드립니다. 감사합니다.`
+
+        const MSG_DORM_OVERNIGHT = `안녕하세요, 충남삼성고입니다.
+오늘은 방과후 수업일입니다. 귀댁의 학생이 아침 출결확인에 참여하지 않아 출석체크가 되지 않은 학부모님들께 자동으로 메시지를 보내드립니다. 출결확인 시간과 장소는 면학실(08:30)입니다. 출석 체크 후 방과후 교실로 이동할 수 있도록 협조 부탁 드립니다. 감사합니다.`
+
+        const MSG_DORM_NO_OVERNIGHT = `안녕하세요, 충남삼성고입니다.
+본 메시지는 금일 08:30 면학실 출석 확인이 되지 않은 학생을 대상으로 자동 발송됩니다. 출석 확인은 08:30부터 면학실에서 진행되오니, 반드시 출석 체크를 완료한 후 방과후 교실로 이동해 주시기 바랍니다. 원활한 운영을 위해 협조 부탁드립니다. 감사합니다.`
+
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
@@ -1941,12 +1988,28 @@ ${month}월 ${day}일(${weekday}) 겨울방학 방과후학교 조간면학 출�
                       <span className="font-bold text-blue-700">1. 통학생</span>
                       <span className="ml-2 text-sm text-blue-600">({filteredCommute.length}명)</span>
                     </div>
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">학생+학부모</span>
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">학생+학부모 / 앱 또는 문자</span>
                   </div>
                   {filteredCommute.length > 0 ? (
-                    <div className="text-xs text-gray-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                      {filteredCommute.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                    </div>
+                    <>
+                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
+                        {filteredCommute.map(s => `${s.studentId} ${s.name}`).join(', ')}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => copyToClipboard(filteredCommute.map(s => s.studentId), '통학생')}
+                          className="flex-1 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600"
+                        >
+                          학번 복사 ({filteredCommute.length}명)
+                        </button>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(MSG_COMMUTE)}
+                          className="px-3 py-2 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200"
+                        >
+                          문구 복사
+                        </button>
+                      </div>
+                    </>
                   ) : (
                     <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
                   )}
@@ -1959,12 +2022,28 @@ ${month}월 ${day}일(${weekday}) 겨울방학 방과후학교 조간면학 출�
                       <span className="font-bold text-indigo-700">2. 기숙사 (외박 신청)</span>
                       <span className="ml-2 text-sm text-indigo-600">({dormOvernightAbsent.length}명)</span>
                     </div>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">학부모만</span>
+                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">학부모만 / 문자만</span>
                   </div>
                   {dormOvernightAbsent.length > 0 ? (
-                    <div className="text-xs text-gray-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                      {dormOvernightAbsent.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                    </div>
+                    <>
+                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
+                        {dormOvernightAbsent.map(s => `${s.studentId} ${s.name}`).join(', ')}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => copyToClipboard(dormOvernightAbsent.map(s => s.studentId), '기숙(외박)')}
+                          className="flex-1 py-2 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600"
+                        >
+                          학번 복사 ({dormOvernightAbsent.length}명)
+                        </button>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(MSG_DORM_OVERNIGHT)}
+                          className="px-3 py-2 bg-indigo-100 text-indigo-700 text-sm rounded-lg hover:bg-indigo-200"
+                        >
+                          문구 복사
+                        </button>
+                      </div>
+                    </>
                   ) : (
                     <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
                   )}
@@ -1977,75 +2056,33 @@ ${month}월 ${day}일(${weekday}) 겨울방학 방과후학교 조간면학 출�
                       <span className="font-bold text-purple-700">3. 기숙사 (외박 미신청)</span>
                       <span className="ml-2 text-sm text-purple-600">({filteredDormNoOvernight.length}명)</span>
                     </div>
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">학생만</span>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">학생만 / 앱 또는 문자</span>
                   </div>
                   {filteredDormNoOvernight.length > 0 ? (
-                    <div className="text-xs text-gray-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
-                      {filteredDormNoOvernight.map(s => `${s.studentId} ${s.name}`).join(', ')}
-                    </div>
+                    <>
+                      <div className="text-xs text-gray-600 mb-2 bg-white p-2 rounded max-h-20 overflow-y-auto">
+                        {filteredDormNoOvernight.map(s => `${s.studentId} ${s.name}`).join(', ')}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => copyToClipboard(filteredDormNoOvernight.map(s => s.studentId), '기숙(외박X)')}
+                          className="flex-1 py-2 bg-purple-500 text-white text-sm font-medium rounded-lg hover:bg-purple-600"
+                        >
+                          학번 복사 ({filteredDormNoOvernight.length}명)
+                        </button>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(MSG_DORM_NO_OVERNIGHT)}
+                          className="px-3 py-2 bg-purple-100 text-purple-700 text-sm rounded-lg hover:bg-purple-200"
+                        >
+                          문구 복사
+                        </button>
+                      </div>
+                    </>
                   ) : (
                     <div className="text-sm text-gray-400 text-center py-2">해당 없음</div>
                   )}
                 </div>
 
-                {/* SMS 전송 버튼 */}
-                {(filteredCommute.length > 0 || dormOvernightAbsent.length > 0 || filteredDormNoOvernight.length > 0) && (
-                  <button
-                    onClick={async () => {
-                      const totalCount = filteredCommute.length + dormOvernightAbsent.length + filteredDormNoOvernight.length
-                      if (!confirm(`총 ${totalCount}명에게 SMS를 발송하시겠습니까?\n\n1. 통학생 ${filteredCommute.length}명 (학생+학부모)\n2. 기숙 외박 ${dormOvernightAbsent.length}명 (학부모만)\n3. 기숙 외박X ${filteredDormNoOvernight.length}명 (학생만)`)) {
-                        return
-                      }
-
-                      setIsSendingSms(true)
-                      setSmsMessage(null)
-
-                      try {
-                        const results: string[] = []
-
-                        // 카테고리 1: 통학생 (학생+학부모)
-                        if (filteredCommute.length > 0) {
-                          const students: SmsStudent[] = filteredCommute.map(s => ({
-                            studentId: s.studentId,
-                            name: s.name
-                          }))
-                          await sendCategorySms(students, 'student_and_parent')
-                          results.push(`통학생 ${filteredCommute.length}명`)
-                        }
-
-                        // 카테고리 2: 기숙 외박 (학부모만)
-                        if (dormOvernightAbsent.length > 0) {
-                          const students: SmsStudent[] = dormOvernightAbsent.map(s => ({
-                            studentId: s.studentId,
-                            name: s.name
-                          }))
-                          await sendCategorySms(students, 'parent_only')
-                          results.push(`기숙외박 ${dormOvernightAbsent.length}명`)
-                        }
-
-                        // 카테고리 3: 기숙 외박X (학생만)
-                        if (filteredDormNoOvernight.length > 0) {
-                          const students: SmsStudent[] = filteredDormNoOvernight.map(s => ({
-                            studentId: s.studentId,
-                            name: s.name
-                          }))
-                          await sendCategorySms(students, 'student_only')
-                          results.push(`기숙 ${filteredDormNoOvernight.length}명`)
-                        }
-
-                        setSmsMessage(`✅ SMS 발송 완료: ${results.join(', ')}`)
-                      } catch (error) {
-                        setSmsMessage(`❌ SMS 발송 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
-                      } finally {
-                        setIsSendingSms(false)
-                      }
-                    }}
-                    disabled={isSendingSms}
-                    className="w-full py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    {isSendingSms ? '발송 중...' : `SMS 전송 (총 ${filteredCommute.length + dormOvernightAbsent.length + filteredDormNoOvernight.length}명)`}
-                  </button>
-                )}
               </div>
 
               <div className="p-4 border-t flex-shrink-0">
