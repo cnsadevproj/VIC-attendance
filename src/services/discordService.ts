@@ -42,7 +42,7 @@ async function renderTablePng(params: RenderParams): Promise<Blob> {
   const px = { x: 10, y: 6 }
   const border = '#bbbbbb'
   const fs = 13
-  const titleFs = 22
+  const titleFs = 18
   const subFs = 12
   const ff = (s: number, bold = false) =>
     `${bold ? 'bold ' : ''}${s}px "Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif`
@@ -69,6 +69,8 @@ async function renderTablePng(params: RenderParams): Promise<Blob> {
   cw[2] = Math.max(cw[2], 50)
   cw[3] = Math.max(cw[3], 100)
 
+  for (let i = 0; i < colCount; i++) { cw[i] = Math.ceil(cw[i]) }
+
   const secW = cw.reduce((a, b) => a + b, 0)
   const gapW = 8
   const rh = fs + px.y * 2
@@ -85,7 +87,7 @@ async function renderTablePng(params: RenderParams): Promise<Blob> {
 
   const leftW = secW
   const rightW = secW + gapW
-  const totalW = Math.ceil(secW * 2 + gapW) + 2
+  const totalW = secW * 2 + gapW + 2
   const topBlockH = titleH + dateH + descH + spacerH
   const noticeBlockH = Math.max(topBlockH, noticeLines.length > 0 ? (subFs + 8) + noticeLines.length * noticeLineH + 8 : topBlockH)
 
@@ -155,51 +157,51 @@ async function renderTablePng(params: RenderParams): Promise<Blob> {
   y = 1 + noticeBlockH
 
   const s1x = 1
-  const s2x = 1 + Math.ceil(secW) + gapW
+  const s2x = 1 + secW + gapW
 
-  drawRect(s1x, y, Math.ceil(secW), rh, '#fff9c4')
-  drawText('1학년', s1x, y, Math.ceil(secW), rh, ff(fs, true), '#000000')
-  drawRect(s2x, y, Math.ceil(secW), rh, '#fce4ec')
-  drawText('2학년', s2x, y, Math.ceil(secW), rh, ff(fs, true), '#000000')
+  drawRect(s1x, y, secW, rh, '#fff9c4')
+  drawText('1학년', s1x, y, secW, rh, ff(fs, true), '#000000')
+  drawRect(s2x, y, secW, rh, '#fce4ec')
+  drawText('2학년', s2x, y, secW, rh, ff(fs, true), '#000000')
 
   ctx.fillStyle = '#ffffff'
-  ctx.fillRect(s1x + Math.ceil(secW), y, gapW, rh)
+  ctx.fillRect(s1x + secW, y, gapW, rh)
 
   y += rh
 
   let x1 = s1x, x2 = s2x
   for (let c = 0; c < colCount; c++) {
-    const w = Math.ceil(cw[c])
-    drawRect(x1, y, w, rh, '#e8e8e8')
+    const w = cw[c]
+    drawRect(x1, y, w, rh, '#fff9c4')
     drawText(headers[c], x1, y, w, rh, ff(fs, true), '#000000')
-    drawRect(x2, y, w, rh, '#e8e8e8')
+    drawRect(x2, y, w, rh, '#fce4ec')
     drawText(headers[c], x2, y, w, rh, ff(fs, true), '#000000')
     x1 += w
     x2 += w
   }
   ctx.fillStyle = '#ffffff'
-  ctx.fillRect(s1x + Math.ceil(secW), y, gapW, rh)
+  ctx.fillRect(s1x + secW, y, gapW, rh)
   y += rh
 
   for (let r = 0; r < maxR; r++) {
     x1 = s1x
     x2 = s2x
     for (let c = 0; c < colCount; c++) {
-      const w = Math.ceil(cw[c])
+      const w = cw[c]
       const t1 = r < grade1Rows.length ? grade1Rows[r][c] || '' : ''
       const t2 = r < grade2Rows.length ? grade2Rows[r][c] || '' : ''
       const align: CanvasTextAlign = c === 3 ? 'left' : 'center'
 
       drawRect(x1, y, w, rh, '#ffffff')
-      if (t1) drawText(t1, x1, y, w, rh, ff(fs), '#000000', align)
+      drawText(t1, x1, y, w, rh, ff(fs), '#000000', align)
       drawRect(x2, y, w, rh, '#ffffff')
-      if (t2) drawText(t2, x2, y, w, rh, ff(fs), '#000000', align)
+      drawText(t2, x2, y, w, rh, ff(fs), '#000000', align)
 
       x1 += w
       x2 += w
     }
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(s1x + Math.ceil(secW), y, gapW, rh)
+    ctx.fillRect(s1x + secW, y, gapW, rh)
     y += rh
   }
 
