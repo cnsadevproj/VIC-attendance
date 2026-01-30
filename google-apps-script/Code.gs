@@ -19,7 +19,7 @@ function doPost(e) {
     output.setMimeType(ContentService.MimeType.JSON);
 
     const data = JSON.parse(e.postData.contents);
-    const { date, displayDate, sheetName, grade1Students, grade2Students } = data;
+    const { date, displayDate, sheetName, grade1Students, grade2Students, notesText } = data;
 
     if (!date || !sheetName) {
       return output.setContent(JSON.stringify({
@@ -59,6 +59,9 @@ function doPost(e) {
       const grade2Data = grade2Students.map(s => [s.seatId, s.name, s.note]);
       sheet.getRange(8, 7, grade2Data.length, 3).setValues(grade2Data);
     }
+
+    sheet.getRange('F1').setValue(notesText ? '[특이사항]\n' + notesText : '');
+    sheet.getRange('F1').setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
 
     const totalCount = (grade1Students?.length || 0) + (grade2Students?.length || 0);
     return output.setContent(JSON.stringify({
@@ -104,6 +107,7 @@ function setupNewSheet(sheet) {
 function clearDataArea(sheet) {
   sheet.getRange('B8:D100').clearContent();
   sheet.getRange('G8:I100').clearContent();
+  sheet.getRange('F1').clearContent();
 }
 
 function testExport() {
