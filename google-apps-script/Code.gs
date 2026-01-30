@@ -19,7 +19,7 @@ function doPost(e) {
     output.setMimeType(ContentService.MimeType.JSON);
 
     const data = JSON.parse(e.postData.contents);
-    const { date, displayDate, sheetName, grade1Students, grade2Students, notesText } = data;
+    const { date, displayDate, sheetName, grade1Students, grade2Students } = data;
 
     if (!date || !sheetName) {
       return output.setContent(JSON.stringify({
@@ -58,15 +58,6 @@ function doPost(e) {
     if (grade2Students && grade2Students.length > 0) {
       const grade2Data = grade2Students.map(s => [s.seatId, s.name, s.note]);
       sheet.getRange(8, 7, grade2Data.length, 3).setValues(grade2Data);
-    }
-
-    if (notesText) {
-      sheet.getRange('K1').setValue('[특이사항]').setFontWeight('bold');
-      var notesLines = notesText.split('\n');
-      for (var i = 0; i < notesLines.length; i++) {
-        sheet.getRange(2 + i, 11).setValue(notesLines[i]);
-      }
-      sheet.setColumnWidth(11, 250);
     }
 
     const totalCount = (grade1Students?.length || 0) + (grade2Students?.length || 0);
@@ -108,13 +99,11 @@ function setupNewSheet(sheet) {
   sheet.setColumnWidth(7, 80);
   sheet.setColumnWidth(8, 80);
   sheet.setColumnWidth(9, 150);
-  sheet.setColumnWidth(11, 250);
 }
 
 function clearDataArea(sheet) {
   sheet.getRange('B8:D100').clearContent();
   sheet.getRange('G8:I100').clearContent();
-  sheet.getRange('K1:K50').clearContent();
 }
 
 function testExport() {
